@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 习惯打卡</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+    <style>
+        /* 日期导航栏 */
+        .date-nav-bar {
+            display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+            background: var(--bg-card); backdrop-filter: blur(12px);
+            border-radius: var(--radius-lg); border: 1px solid var(--border-card);
+            margin-bottom: 16px; box-shadow: var(--shadow-sm); flex-wrap: wrap;
+        }
+        .date-nav-btn {
+            width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; transition: background 0.15s, transform 0.15s; flex-shrink: 0;
+        }
+        .date-nav-btn:hover { background: var(--bg-hover); transform: scale(1.1); }
+        .date-display { display: flex; align-items: center; gap: 8px; }
+        .date-text { font-size: 1.1rem; font-weight: 600; font-family: var(--font-sans); }
+        .date-picker {
+            font-family: inherit; font-size: 0.85rem; padding: 4px 8px;
+            border: 1px solid var(--border-light); border-radius: var(--radius-md);
+            background: rgba(255,255,255,0.6); color: var(--text-primary); cursor: pointer;
+        }
+        .date-today-btn {
+            font-size: 0.75rem; padding: 4px 12px; border-radius: 12px;
+            border: 1px solid var(--color-water-deep); background: var(--color-water-light);
+            color: var(--color-water-deep); cursor: pointer; transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .date-today-btn:hover { background: var(--color-water-deep); color: white; }
+        .date-badge {
+            font-size: 0.75rem; padding: 2px 10px; border-radius: 12px;
+            background: var(--color-mint-light); color: var(--color-mint-deep);
+            font-weight: 600; margin-left: auto;
+        }
+        .date-badge.past { background: var(--color-gold-light); color: var(--color-gold-deep); }
+
+        /* ===== 习惯页面专属样式 ===== */
+        .habits-container { display: flex; flex-direction: column; gap: 24px; }
+
+        /* 统计卡片 */
+        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .stat-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 20px; text-align: center;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-value { font-size: 2rem; font-weight: 700; color: var(--color-water-deep); font-family: var(--font-sans); }
+        .stat-label { font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px; }
+        .stat-card.fire .stat-value { color: var(--color-urgent); }
+
+        /* 多邻国风格月历热力图 */
+        .calendar-section { background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg); border: 1px solid var(--border-card); padding: 20px; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .calendar-title { font-size: 1.125rem; font-weight: 600; }
+        .calendar-nav { display: flex; gap: 8px; }
+        .calendar-nav button { background: var(--bg-hover); border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 4px 12px; cursor: pointer; font-size: 1rem; transition: background 0.2s; }
+        .calendar-nav button:hover { background: var(--color-water-light); }
+
+        .heatmap-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .heatmap-day {
+            aspect-ratio: 1; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 0.7rem; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; position: relative;
+            border: 1px solid var(--border-light); background: rgba(255,255,255,0.5);
+        }
+        .heatmap-day:hover { transform: scale(1.15); z-index: 2; box-shadow: var(--shadow-md); }
+        .heatmap-day.empty { background: transparent; border: none; cursor: default; pointer-events: none; }
+        .heatmap-day.empty:hover { transform: none; box-shadow: none; }
+        .heatmap-day .day-number { font-weight: 600; font-family: var(--font-sans); }
+        .heatmap-day .day-dots { display: flex; gap: 2px; margin-top: 2px; flex-wrap: wrap; justify-content: center; }
+        .day-dot { width: 4px; height: 4px; border-radius: 50%; }
+        .heatmap-day.today { border: 2px solid var(--color-water-deep); }
+        .heatmap-day.level-0 { background: rgba(241,245,249,0.8); }
+        .heatmap-day.level-1 { background: var(--color-mint-light); }
+        .heatmap-day.level-2 { background: var(--color-mint); }
+        .heatmap-day.level-3 { background: var(--color-mint-deep); color: white; }
+        .heatmap-day.level-4 { background: var(--color-slytherin-green); color: white; }
+
+        .heatmap-legend { display: flex; align-items: center; gap: 8px; margin-top: 12px; justify-content: flex-end; font-size: 0.75rem; color: var(--text-secondary); }
+        .legend-box { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--border-light); }
+
+        /* 星期标签 */
+        .weekday-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; text-align: center; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-sans); }
+
+        /* 习惯列表 */
+        .habits-section { display: flex; flex-direction: column; gap: 12px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; }
+        .section-title { font-size: 1.125rem; font-weight: 600; }
+        .add-btn { background: var(--color-water-deep); color: white; border: none; border-radius: var(--radius-md); padding: 8px 16px; cursor: pointer; font-size: 0.875rem; transition: background 0.2s, box-shadow 0.2s; display: flex; align-items: center; gap: 6px; }
+        .add-btn:hover { background: var(--color-mint-deep); box-shadow: var(--shadow-glow); }
+
+        .habit-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 16px; display: flex; align-items: center; gap: 16px;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;
+        }
+        .habit-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .habit-card.completed { border-color: var(--color-mint); background: rgba(52, 211, 153, 0.05); }
+
+        .habit-color { width: 12px; height: 48px; border-radius: 6px; flex-shrink: 0; }
+        .habit-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; background: var(--bg-hover); flex-shrink: 0; }
+        .habit-info { flex: 1; min-width: 0; }
+        .habit-name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .habit-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 0.75rem; color: var(--text-secondary); }
+        .habit-streak { display: flex; align-items: center; gap: 4px; }
+        .habit-streak.fire { color: var(--color-urgent); }
+
+        .habit-check-btn {
+            width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--border-light); background: white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0;
+        }
+        .habit-check-btn:hover { border-color: var(--color-mint); transform: scale(1.1); }
+        .habit-check-btn.checked { background: var(--color-mint); border-color: var(--color-mint); color: white; transform: scale(1.05); }
+        .habit-check-btn.checked:hover { background: var(--color-mint-deep); }
+
+        .habit-actions { display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s; }
+        .habit-card:hover .habit-actions { opacity: 1; }
+        .action-icon { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; transition: background 0.2s; }
+        .action-icon:hover { background: var(--bg-hover); }
+
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state p { font-size: 0.875rem; }
+
+        /* 弹窗 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 24px; width: 90%; max-width: 420px; box-shadow: var(--shadow-lg); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; }
+        .modal-close:hover { background: var(--bg-hover); }
+
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary); }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus { outline: none; border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.2); }
+        .color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+        .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s; }
+        .color-option:hover { transform: scale(1.1); }
+        .color-option.selected { border-color: var(--text-primary); transform: scale(1.15); }
+
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+        .btn { padding: 10px 20px; border-radius: var(--radius-md); border: none; cursor: pointer; font-size: 0.875rem; font-family: inherit; transition: background 0.2s; }
+        .btn-secondary { background: var(--bg-hover); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--border-light); }
+        .btn-primary { background: var(--color-water-deep); color: white; }
+        .btn-primary:hover { background: var(--color-mint-deep); }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--color-urgent); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+
+        /* 角色激励弹窗 */
+        .encourage-overlay { background: rgba(0,0,0,0.5); }
+        .encourage-modal { text-align: center; padding: 32px; max-width: 380px; }
+        .encourage-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--color-gold); margin: 0 auto 12px; }
+        .encourage-avatar-placeholder { width: 80px; height: 80px; border-radius: 50%; background: var(--color-water-light); display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 12px; border: 3px solid var(--color-gold); }
+        .encourage-name { font-size: 1.125rem; font-weight: 600; margin-bottom: 8px; }
+        .encourage-message { font-size: 1rem; line-height: 1.6; color: var(--text-primary); margin-bottom: 16px; padding: 0 8px; }
+        .encourage-streak { font-size: 0.875rem; color: var(--color-urgent); font-weight: 600; margin-bottom: 16px; }
+        .encourage-btn { background: var(--color-gold); color: var(--text-primary); border: none; border-radius: var(--radius-md); padding: 10px 28px; cursor: pointer; font-size: 1rem; font-weight: 600; transition: background 0.2s, transform 0.2s; }
+        .encourage-btn:hover { background: var(--color-gold-deep); transform: scale(1.05); }
+
+        /* 日期详情弹窗 */
+        .day-detail-habits { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+        .day-detail-habit { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.5); }
+        .day-detail-habit .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .day-detail-habit .name { flex: 1; font-size: 0.875rem; }
+        .day-detail-habit .status { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; }
+        .day-detail-habit .status.done { background: var(--color-mint-light); color: var(--color-mint-deep); }
+        .day-detail-habit .status.miss { background: rgba(241,245,249,0.8); color: var(--text-muted); }
+
+        @media (max-width: 768px) {
+            .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+            .stat-card { padding: 12px; }
+            .stat-value { font-size: 1.5rem; }
+            .habit-card { padding: 12px; gap: 12px; }
+            .habit-actions { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="habits"></sidebar>
+        <main class="main-content">
+            <header class="page-header">
+                <h2>习惯打卡</h2>
+            </header>
+            <section class="page-content habits-container">
+
+                <!-- 日期导航 -->
+                <div class="date-nav-bar">
+                    <button class="date-nav-btn" @click="changeDate(-1)">‹</button>
+                    <div class="date-display">
+                        <span class="date-text">{{ currentDateDisplay }}</span>
+                        <input type="date" class="date-picker" v-model="dateInput" @change="onDateInput">
+                    </div>
+                    <button class="date-nav-btn" @click="changeDate(1)">›</button>
+                    <button v-if="!isToday" class="date-today-btn" @click="goTodayDate">回到今天</button>
+                    <span :class="['date-badge', { 'past': !isToday }]">{{ isToday ? '今天' : '补打卡' }}</span>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value">{{ dayRate }}%</div>
+                        <div class="stat-label">{{ isToday ? '今日完成' : '该日完成' }}</div>
+                    </div>
+                    <div class="stat-card fire">
+                        <div class="stat-value">{{ maxStreak }}</div>
+                        <div class="stat-label">最长连续</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ totalCheckIns }}</div>
+                        <div class="stat-label">总打卡数</div>
+                    </div>
+                </div>
+
+                <!-- 多邻国风格月历热力图 -->
+                <div class="calendar-section">
+                    <div class="calendar-header">
+                        <div class="calendar-title">{{ currentYear }}年{{ currentMonth + 1 }}月</div>
+                        <div class="calendar-nav">
+                            <button @click="prevMonth">‹</button>
+                            <button @click="goTodayMonth">今</button>
+                            <button @click="nextMonth">›</button>
+                        </div>
+                    </div>
+                    <div class="weekday-labels">
+                        <span v-for="d in weekdays" :key="d">{{ d }}</span>
+                    </div>
+                    <div class="heatmap-grid">
+                        <div v-for="(day, idx) in calendarDays" :key="idx"
+                             :class="['heatmap-day', day.type, 'level-' + day.level, { 'today': day.isRealToday, 'selected': day.date === currentDate }]"
+                             @click="day.date && selectDate(day.date)">
+                            <span v-if="day.day" class="day-number">{{ day.day }}</span>
+                            <div v-if="day.dots" class="day-dots">
+                                <span v-for="(dot, i) in day.dots" :key="i" class="day-dot" :style="{ background: dot }"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="heatmap-legend">
+                        <span>少</span>
+                        <span class="legend-box" style="background: rgba(241,245,249,0.8);"></span>
+                        <span class="legend-box" style="background: var(--color-mint-light);"></span>
+                        <span class="legend-box" style="background: var(--color-mint);"></span>
+                        <span class="legend-box" style="background: var(--color-mint-deep);"></span>
+                        <span class="legend-box" style="background: var(--color-slytherin-green);"></span>
+                        <span>多</span>
+                    </div>
+                </div>
+
+                <!-- 习惯列表 -->
+                <div class="habits-section">
+                    <div class="section-header">
+                        <div class="section-title">{{ isToday ? '今日习惯' : currentDate + ' 习惯' }}</div>
+                        <button class="add-btn" @click="openCreate">
+                            <span>+</span> 添加习惯
+                        </button>
+                    </div>
+                    <div v-if="habits.length === 0" class="empty-state">
+                        <div class="icon">🌱</div>
+                        <p>还没有习惯哦，添加第一个吧！</p>
+                    </div>
+                    <div v-for="habit in habitsWithStreak" :key="habit.id" :class="['habit-card', { 'completed': habit.dayCompleted }]">
+                        <div class="habit-color" :style="{ background: habit.color }"></div>
+                        <div class="habit-icon">{{ habit.icon }}</div>
+                        <div class="habit-info">
+                            <div class="habit-name">{{ habit.name }}</div>
+                            <div class="habit-meta">
+                                <span class="habit-streak" :class="{ 'fire': habit.streak >= 7 }">
+                                    <span>{{ habit.streak >= 7 ? '🔥' : '⚡' }}</span>
+                                    <span>{{ habit.streak }} 天连续</span>
+                                </span>
+                                <span>{{ habit.category }}</span>
+                            </div>
+                        </div>
+                        <button class="habit-check-btn" :class="{ 'checked': habit.dayCompleted }" @click.stop="toggleHabit(habit)">
+                            {{ habit.dayCompleted ? '✓' : '' }}
+                        </button>
+                        <div class="habit-actions" @click.stop>
+                            <button class="action-icon" @click="openEdit(habit)" title="编辑">✏️</button>
+                            <button class="action-icon" @click="deleteHabit(habit)" title="删除">🗑️</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 添加/编辑习惯弹窗 -->
+        <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">{{ editingHabit.id ? '编辑习惯' : '添加习惯' }}</div>
+                    <button class="modal-close" @click="closeModal">×</button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">习惯名称</label>
+                    <input class="form-input" v-model="habitForm.name" placeholder="例如：早起喝水、阅读30分钟...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">图标</label>
+                    <input class="form-input" v-model="habitForm.icon" placeholder="例如：💧 📖 🏃 🧘">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">分类</label>
+                    <input class="form-input" v-model="habitForm.category" placeholder="例如：健康、学习、运动">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">颜色</label>
+                    <div class="color-picker">
+                        <div v-for="c in colorOptions" :key="c" :class="['color-option', { 'selected': habitForm.color === c }]" :style="{ background: c }" @click="habitForm.color = c"></div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button v-if="editingHabit.id" class="btn btn-danger" @click="confirmDelete">删除</button>
+                    <button class="btn btn-secondary" @click="closeModal">取消</button>
+                    <button class="btn btn-primary" @click="saveHabit">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 角色激励弹窗 -->
+        <div v-if="showEncourage" class="modal-overlay encourage-overlay" @click.self="closeEncourage">
+            <div class="modal encourage-modal">
+                <div v-if="encourageChar.avatar" class="encourage-avatar">
+                    <img :src="encourageChar.avatar" class="encourage-avatar" alt="">
+                </div>
+                <div v-else class="encourage-avatar-placeholder">{{ encourageChar.name ? encourageChar.name.charAt(0) : '?' }}</div>
+                <div class="encourage-name">{{ encourageChar.name }}</div>
+                <div class="encourage-message">{{ encourageMessage }}</div>
+                <div v-if="encourageStreak > 0" class="encourage-streak">🔥 连续 {{ encourageStreak }} 天！</div>
+                <button class="encourage-btn" @click="closeEncourage">收到！</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊', ariaLabel: '仪表盘' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰', ariaLabel: '时间轴' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋', ariaLabel: '任务' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅', ariaLabel: '习惯' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝', ariaLabel: '每日回顾' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓', ariaLabel: '学习日记' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤', ariaLabel: '角色库' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️', ariaLabel: '设置' }
+                ]);
+                const activeNavItems = computed(() => navItems.value.map(item => ({ ...item, active: item.id === props.activePage })));
+                const today = computed(() => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+                return { sidebarCollapsed, activeNavItems, today };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav" aria-label="主导航">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                    <div class="sidebar-timeline" v-show="!sidebarCollapsed">
+                        <div class="timeline-header"><h3>今日时间轴</h3><span class="timeline-date">{{ today }}</span></div>
+                        <div class="timeline-preview"><p class="placeholder">暂无记录</p><p class="hint">前往时间轴页面添加</p></div>
+                    </div>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const habits = ref([]);
+                const records = ref([]);
+                const realToday = ref(LifeOS.Utils.formatDate());
+                const currentDate = ref(LifeOS.Utils.formatDate());
+                const dateInput = ref(currentDate.value);
+                const currentYear = ref(new Date().getFullYear());
+                const currentMonth = ref(new Date().getMonth());
+                const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+                const colorOptions = ['#34D399', '#7DD3FC', '#FDE68A', '#F59E0B', '#EF4444', '#A78BFA', '#F472B6', '#1A472A', '#0E1A40'];
+
+                const isToday = computed(() => currentDate.value === realToday.value);
+                const currentDateDisplay = computed(() => {
+                    const d = new Date(currentDate.value + 'T00:00:00');
+                    const wd = ['周日','周一','周二','周三','周四','周五','周六'];
+                    return `${d.getMonth() + 1}月${d.getDate()}日 ${wd[d.getDay()]}`;
+                });
+
+                // 弹窗状态
+                const showModal = ref(false);
+                const editingHabit = ref({});
+                const habitForm = ref({ name: '', icon: '✅', category: '', color: '#34D399' });
+                const showEncourage = ref(false);
+                const encourageChar = ref({});
+                const encourageMessage = ref('');
+                const encourageStreak = ref(0);
+
+                // 加载数据
+                const loadData = async () => {
+                    habits.value = await LifeOS.Habit.getAll();
+                    const allRecords = await LifeOS.Database.getAll('habitRecords');
+                    records.value = allRecords;
+                };
+
+                // 日期导航
+                const changeDate = (delta) => {
+                    const d = new Date(currentDate.value + 'T00:00:00');
+                    d.setDate(d.getDate() + delta);
+                    currentDate.value = LifeOS.Utils.formatDate(d);
+                    dateInput.value = currentDate.value;
+                };
+                const goTodayDate = () => {
+                    currentDate.value = realToday.value;
+                    dateInput.value = currentDate.value;
+                    const n = new Date();
+                    currentYear.value = n.getFullYear();
+                    currentMonth.value = n.getMonth();
+                };
+                const onDateInput = () => {
+                    if (dateInput.value) {
+                        currentDate.value = dateInput.value;
+                        const d = new Date(dateInput.value + 'T00:00:00');
+                        currentYear.value = d.getFullYear();
+                        currentMonth.value = d.getMonth();
+                    }
+                };
+                const selectDate = (date) => {
+                    currentDate.value = date;
+                    dateInput.value = date;
+                    const d = new Date(date + 'T00:00:00');
+                    currentYear.value = d.getFullYear();
+                    currentMonth.value = d.getMonth();
+                };
+
+                // 计算该日完成率
+                const dayRate = computed(() => {
+                    if (!habits.value.length) return 0;
+                    const completed = habits.value.filter(h => isCompletedOnDate(h.id, currentDate.value)).length;
+                    return Math.round((completed / habits.value.length) * 100);
+                });
+
+                // 最长连续（基于真实今天）
+                const maxStreak = computed(() => {
+                    if (!habits.value.length) return 0;
+                    return Math.max(...habits.value.map(h => getStreakSync(h.id)), 0);
+                });
+
+                // 总打卡数
+                const totalCheckIns = computed(() => {
+                    return records.value.filter(r => r.completed).length;
+                });
+
+                // 习惯列表（带连续天数和当前日期状态）
+                const habitsWithStreak = computed(() => {
+                    return habits.value.map(h => ({
+                        ...h,
+                        streak: getStreakSync(h.id),
+                        dayCompleted: isCompletedOnDate(h.id, currentDate.value)
+                    }));
+                });
+
+                // 判断某日是否完成
+                const isCompletedOnDate = (habitId, date) => {
+                    return records.value.some(r => r.habitId === habitId && r.date === date && r.completed);
+                };
+
+                // 计算连续天数（基于真实今天）
+                const getStreakSync = (habitId) => {
+                    const habitRecords = records.value.filter(r => r.habitId === habitId && r.completed).sort((a, b) => b.date.localeCompare(a.date));
+                    if (!habitRecords.length) return 0;
+                    let streak = 0;
+                    let checkDate = habitRecords[0].date === realToday.value ? realToday.value : LifeOS.Utils.formatDate(new Date(Date.now() - 86400000));
+                    for (const r of habitRecords) {
+                        if (r.date === checkDate) { streak++; checkDate = LifeOS.Utils.formatDate(new Date(new Date(checkDate).getTime() - 86400000)); }
+                        else { break; }
+                    }
+                    return streak;
+                };
+
+                // 生成月历数据
+                const calendarDays = computed(() => {
+                    const days = [];
+                    const firstDay = new Date(currentYear.value, currentMonth.value, 1);
+                    const lastDay = new Date(currentYear.value, currentMonth.value + 1, 0);
+                    const startOffset = firstDay.getDay();
+
+                    for (let i = 0; i < startOffset; i++) days.push({ type: 'empty' });
+
+                    for (let d = 1; d <= lastDay.getDate(); d++) {
+                        const dateStr = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const dayRecords = records.value.filter(r => r.date === dateStr && r.completed);
+                        const completedCount = dayRecords.length;
+                        const totalHabits = habits.value.length;
+                        let level = 0;
+                        if (totalHabits > 0) {
+                            const ratio = completedCount / totalHabits;
+                            if (ratio >= 1) level = 4;
+                            else if (ratio >= 0.75) level = 3;
+                            else if (ratio >= 0.5) level = 2;
+                            else if (ratio > 0) level = 1;
+                        }
+                        const dots = dayRecords.map(r => {
+                            const h = habits.value.find(hab => hab.id === r.habitId);
+                            return h ? h.color : '#ccc';
+                        }).slice(0, 5);
+
+                        days.push({
+                            day: d, type: 'day', date: dateStr, level,
+                            isRealToday: dateStr === realToday.value, dots
+                        });
+                    }
+                    return days;
+                });
+
+                const prevMonth = () => { currentMonth.value--; if (currentMonth.value < 0) { currentMonth.value = 11; currentYear.value--; } };
+                const nextMonth = () => { currentMonth.value++; if (currentMonth.value > 11) { currentMonth.value = 0; currentYear.value++; } };
+                const goTodayMonth = () => { const n = new Date(); currentYear.value = n.getFullYear(); currentMonth.value = n.getMonth(); };
+
+                // 打卡/取消打卡（支持补打卡）
+                const toggleHabit = async (habit) => {
+                    const wasCompleted = isCompletedOnDate(habit.id, currentDate.value);
+                    const newStatus = !wasCompleted;
+                    await LifeOS.Habit.checkIn(habit.id, currentDate.value, { completed: newStatus });
+                    await loadData();
+
+                    // 只有今天打卡才触发激励
+                    if (newStatus && isToday.value) {
+                        const streak = getStreakSync(habit.id);
+                        if (streak >= 7 || dayRate.value === 100) {
+                            showEncourageDialog(habit, streak, dayRate.value === 100);
+                        }
+                    }
+                };
+
+                // 角色激励
+                const showEncourageDialog = async (habit, streak, allCompleted = false) => {
+                    const chars = await LifeOS.Character.getAll();
+                    if (!chars.length) return;
+                    const sorted = chars.filter(c => c.priority >= 50).sort(() => Math.random() - 0.5);
+                    const char = sorted[0] || chars[0];
+                    encourageChar.value = char;
+                    encourageStreak.value = streak;
+
+                    if (allCompleted) {
+                        encourageMessage.value = `太棒了！今日所有习惯全部完成！${char.name}为你感到骄傲！`;
+                    } else if (char.exampleLines && char.exampleLines.encourage && char.exampleLines.encourage.length > 0) {
+                        const lines = char.exampleLines.encourage;
+                        encourageMessage.value = lines[Math.floor(Math.random() * lines.length)];
+                    } else {
+                        encourageMessage.value = `太棒了！「${habit.name}」连续 ${streak} 天！`;
+                    }
+                    showEncourage.value = true;
+                };
+                const closeEncourage = () => { showEncourage.value = false; encourageChar.value = {}; };
+
+                // 习惯 CRUD
+                const openCreate = () => { editingHabit.value = {}; habitForm.value = { name: '', icon: '✅', category: '', color: '#34D399' }; showModal.value = true; };
+                const openEdit = (habit) => { editingHabit.value = habit; habitForm.value = { name: habit.name, icon: habit.icon, category: habit.category, color: habit.color }; showModal.value = true; };
+                const closeModal = () => { showModal.value = false; };
+                const saveHabit = async () => {
+                    if (!habitForm.value.name.trim()) return;
+                    if (editingHabit.value.id) {
+                        await LifeOS.Habit.update(editingHabit.value.id, { ...habitForm.value });
+                    } else {
+                        await LifeOS.Habit.create({ ...habitForm.value });
+                    }
+                    await loadData();
+                    closeModal();
+                };
+                const deleteHabit = (habit) => { if (confirm(`确定删除习惯「${habit.name}」？所有打卡记录也会消失。`)) { LifeOS.Habit.delete(habit.id).then(loadData); } };
+                const confirmDelete = () => { if (editingHabit.value.id) deleteHabit(editingHabit.value); closeModal(); };
+
+                onMounted(loadData);
+
+                return {
+                    habits, habitsWithStreak, dayRate, maxStreak, totalCheckIns,
+                    currentDate, realToday, isToday, currentDateDisplay, dateInput,
+                    currentYear, currentMonth, weekdays, calendarDays,
+                    showModal, editingHabit, habitForm, colorOptions,
+                    showEncourage, encourageChar, encourageMessage, encourageStreak,
+                    changeDate, goTodayDate, onDateInput, selectDate,
+                    prevMonth, nextMonth, goTodayMonth,
+                    toggleHabit, openCreate, openEdit, closeModal, saveHabit, deleteHabit, confirmDelete,
+                    closeEncourage
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

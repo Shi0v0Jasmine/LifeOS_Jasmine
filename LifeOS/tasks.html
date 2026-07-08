@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 任务</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="tasks"></sidebar>
+        <main class="main-content">
+            <!-- 页面头部 -->
+            <header class="page-header">
+                <div class="header-title-group">
+                    <h2>任务管理</h2>
+                    <span class="header-subtitle">
+                        {{ todayTasks.length }} 项今日任务 · 完成率 {{ completionRate }}%
+                        <span v-if="completionRate >= 85" class="rate-badge gold">🌟 完美</span>
+                        <span v-else-if="completionRate >= 75" class="rate-badge great">✨ 优秀</span>
+                        <span v-else-if="completionRate >= 50" class="rate-badge good">👍 不错</span>
+                    </span>
+                </div>
+                <div class="header-actions">
+                    <button class="action-btn" @click="showFilter = !showFilter">
+                        <span>🔖</span> {{ showFilter ? '隐藏筛选' : '显示筛选' }}
+                    </button>
+                    <button class="action-btn primary" @click="openCreate">
+                        <span>➕</span> 添加任务
+                    </button>
+                </div>
+            </header>
+
+            <!-- 筛选栏 -->
+            <section v-if="showFilter" class="filter-bar task-filter">
+                <div class="filter-group">
+                    <label>显示范围：</label>
+                    <button 
+                        v-for="f in dateFilters" :key="f.id"
+                        :class="['filter-btn', { active: dateFilter === f.id }]"
+                        @click="dateFilter = f.id"
+                    >
+                        {{ f.name }}
+                    </button>
+                </div>
+                <div class="filter-group">
+                    <label>状态：</label>
+                    <button 
+                        v-for="f in statusFilters" :key="f.id"
+                        :class="['filter-btn', { active: statusFilter === f.id }]"
+                        @click="statusFilter = f.id"
+                    >
+                        {{ f.name }}
+                    </button>
+                </div>
+                <div class="filter-group">
+                    <label>
+                        <input type="checkbox" v-model="showCompletedInQuadrant"> 在四象限中显示已完成任务
+                    </label>
+                </div>
+            </section>
+
+            <!-- 四象限布局 -->
+            <section class="quadrants-grid">
+                <!-- 第一象限：重要·紧急 -->
+                <div class="quadrant urgent-important">
+                    <div class="quadrant-header">
+                        <span class="quadrant-icon">🔴</span>
+                        <span class="quadrant-title">重要 · 紧急</span>
+                        <span class="quadrant-count">{{ q1Tasks.length }}</span>
+                    </div>
+                    <div class="quadrant-body">
+                        <div 
+                            v-for="task in q1Tasks" :key="task.id"
+                            class="task-card"
+                            :class="{ completed: task.completed }"
+                            @click="openDetail(task)"
+                        >
+                            <div class="task-card-header">
+                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                    <span v-if="task.completed">✓</span>
+                                </div>
+                                <div class="task-card-title">{{ task.title }}</div>
+                            </div>
+                            <div v-if="task.deadline" class="task-countdown">
+                                <div class="countdown-bar">
+                                    <div class="countdown-fill" :style="{ width: getDeadlinePercent(task) + '%', background: getDeadlineColor(task) }"></div>
+                                </div>
+                                <span class="countdown-text">{{ getDeadlineText(task) }}</span>
+                            </div>
+                        </div>
+                        <div v-if="!q1Tasks.length" class="quadrant-empty">
+                            <p>暂无任务<br>快来规划你的任务吧~</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第二象限：重要·不紧急 -->
+                <div class="quadrant important-not-urgent">
+                    <div class="quadrant-header">
+                        <span class="quadrant-icon">🔵</span>
+                        <span class="quadrant-title">重要 · 不紧急</span>
+                        <span class="quadrant-count">{{ q2Tasks.length }}</span>
+                    </div>
+                    <div class="quadrant-body">
+                        <div 
+                            v-for="task in q2Tasks" :key="task.id"
+                            class="task-card"
+                            :class="{ completed: task.completed }"
+                            @click="openDetail(task)"
+                        >
+                            <div class="task-card-header">
+                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                    <span v-if="task.completed">✓</span>
+                                </div>
+                                <div class="task-card-title">{{ task.title }}</div>
+                            </div>
+                            <div v-if="task.deadline" class="task-countdown">
+                                <div class="countdown-bar">
+                                    <div class="countdown-fill" :style="{ width: getDeadlinePercent(task) + '%', background: getDeadlineColor(task) }"></div>
+                                </div>
+                                <span class="countdown-text">{{ getDeadlineText(task) }}</span>
+                            </div>
+                        </div>
+                        <div v-if="!q2Tasks.length" class="quadrant-empty">
+                            <p>暂无任务<br>快来规划你的任务吧~</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第三象限：紧急·不重要 -->
+                <div class="quadrant urgent-not-important">
+                    <div class="quadrant-header">
+                        <span class="quadrant-icon">🟡</span>
+                        <span class="quadrant-title">紧急 · 不重要</span>
+                        <span class="quadrant-count">{{ q3Tasks.length }}</span>
+                    </div>
+                    <div class="quadrant-body">
+                        <div 
+                            v-for="task in q3Tasks" :key="task.id"
+                            class="task-card"
+                            :class="{ completed: task.completed }"
+                            @click="openDetail(task)"
+                        >
+                            <div class="task-card-header">
+                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                    <span v-if="task.completed">✓</span>
+                                </div>
+                                <div class="task-card-title">{{ task.title }}</div>
+                            </div>
+                            <div v-if="task.deadline" class="task-countdown">
+                                <div class="countdown-bar">
+                                    <div class="countdown-fill" :style="{ width: getDeadlinePercent(task) + '%', background: getDeadlineColor(task) }"></div>
+                                </div>
+                                <span class="countdown-text">{{ getDeadlineText(task) }}</span>
+                            </div>
+                        </div>
+                        <div v-if="!q3Tasks.length" class="quadrant-empty">
+                            <p>暂无任务<br>快来规划你的任务吧~</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第四象限：不重要·不紧急 -->
+                <div class="quadrant not-urgent-not-important">
+                    <div class="quadrant-header">
+                        <span class="quadrant-icon">⚪</span>
+                        <span class="quadrant-title">不重要 · 不紧急</span>
+                        <span class="quadrant-count">{{ q4Tasks.length }}</span>
+                    </div>
+                    <div class="quadrant-body">
+                        <div 
+                            v-for="task in q4Tasks" :key="task.id"
+                            class="task-card"
+                            :class="{ completed: task.completed }"
+                            @click="openDetail(task)"
+                        >
+                            <div class="task-card-header">
+                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                    <span v-if="task.completed">✓</span>
+                                </div>
+                                <div class="task-card-title">{{ task.title }}</div>
+                            </div>
+                            <div v-if="task.deadline" class="task-countdown">
+                                <div class="countdown-bar">
+                                    <div class="countdown-fill" :style="{ width: getDeadlinePercent(task) + '%', background: getDeadlineColor(task) }"></div>
+                                </div>
+                                <span class="countdown-text">{{ getDeadlineText(task) }}</span>
+                            </div>
+                        </div>
+                        <div v-if="!q4Tasks.length" class="quadrant-empty">
+                            <p>暂无任务<br>快来规划你的任务吧~</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 任务添加/编辑弹窗 -->
+        <div v-if="showTaskModal" class="modal-overlay" @click.self="closeTaskModal">
+            <div class="modal task-modal">
+                <div class="modal-header">
+                    <h3>{{ editingTask.id ? '编辑任务' : '添加任务' }}</h3>
+                    <button class="close-btn" @click="closeTaskModal">✕</button>
+                </div>
+                <div class="form-fields">
+                    <div class="form-group">
+                        <label>标题 *</label>
+                        <input type="text" v-model="taskForm.title" placeholder="任务标题">
+                    </div>
+                    <div class="form-group">
+                        <label>描述</label>
+                        <textarea v-model="taskForm.description" rows="2" placeholder="任务详情..."></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>截止日期</label>
+                            <input type="date" v-model="taskForm.deadline">
+                        </div>
+                        <div class="form-group">
+                            <label>优先级 (1-10)</label>
+                            <input type="range" v-model.number="taskForm.priority" min="1" max="10">
+                            <span class="range-value">{{ taskForm.priority }}</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>四象限（自动计算，可手动调整）</label>
+                        <div class="quadrant-selector">
+                            <button 
+                                v-for="q in quadrantOptions" :key="q.id"
+                                :class="['quadrant-btn', q.id, { active: taskForm.quadrant === q.id }]"
+                                @click="taskForm.quadrant = q.id"
+                            >
+                                {{ q.icon }} {{ q.label }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>类别</label>
+                        <input type="text" v-model="taskForm.category" placeholder="如：学习、工作、生活">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" v-model="taskForm.isRecurring"> 循环任务（每天出现）
+                        </label>
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            长期任务（截止日期超过7天）会自动设为循环任务
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button v-if="editingTask.id" class="btn-danger" @click="deleteTask">删除</button>
+                    <div class="spacer"></div>
+                    <button class="btn-secondary" @click="closeTaskModal">取消</button>
+                    <button class="btn-primary" @click="saveTask">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 角色激励弹窗 -->
+        <div v-if="showEncourage" class="modal-overlay encourage-overlay" @click.self="closeEncourage">
+            <div class="modal encourage-modal">
+                <div class="encourage-content">
+                    <div class="encourage-character">
+                        <img v-if="encourageChar.avatar" :src="encourageChar.avatar" class="encourage-avatar" alt="">
+                        <div v-else class="encourage-avatar avatar-placeholder-large">
+                            {{ encourageChar.name ? encourageChar.name.charAt(0) : '?' }}
+                        </div>
+                        <div class="encourage-name">{{ encourageChar.name }}</div>
+                    </div>
+                    <div class="encourage-message">{{ encourageMessage }}</div>
+                    <div class="encourage-rate">今日完成率 {{ completionRate }}%</div>
+                    <button class="btn-primary encourage-close" @click="closeEncourage">
+                        {{ completionRate >= 85 ? '继续互动' : '谢谢鼓励！' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️' }
+                ]);
+                const activeNavItems = computed(() => {
+                    return navItems.value.map(item => ({ ...item, active: item.id === props.activePage }));
+                });
+                return { sidebarCollapsed, activeNavItems };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">
+                            {{ sidebarCollapsed ? '→' : '←' }}
+                        </button>
+                    </div>
+                    <nav class="sidebar-nav">
+                        <a v-for="item in activeNavItems" :key="item.id"
+                           :href="item.url"
+                           :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const allTasks = ref([]);
+                const showFilter = ref(false);
+                const dateFilter = ref('today');
+                const statusFilter = ref('all');
+                const showCompletedInQuadrant = ref(false);
+                const showTaskModal = ref(false);
+                const editingTask = ref({});
+                const taskForm = ref({ title: '', description: '', deadline: '', priority: 5, quadrant: '', category: '' });
+                const completionRate = ref(0);
+                const showEncourage = ref(false);
+                const encourageChar = ref({});
+                const encourageMessage = ref('');
+                const lastRate = ref(0);  // 上次记录的完成率，用于检测跨越阈值
+
+                const dateFilters = [
+                    { id: 'today', name: '今日' },
+                    { id: 'week', name: '本周' },
+                    { id: 'all', name: '全部' }
+                ];
+                const statusFilters = [
+                    { id: 'all', name: '全部' },
+                    { id: 'pending', name: '待办' },
+                    { id: 'completed', name: '已完成' }
+                ];
+                const quadrantOptions = [
+                    { id: 'urgent-important', label: '重要·紧急', icon: '🔴' },
+                    { id: 'important-not-urgent', label: '重要·不紧急', icon: '🔵' },
+                    { id: 'urgent-not-important', label: '紧急·不重要', icon: '🟡' },
+                    { id: 'not-urgent-not-important', label: '不重要·不紧急', icon: '⚪' }
+                ];
+
+                // 筛选后的任务
+                const filteredTasks = computed(() => {
+                    let result = allTasks.value;
+                    const today = LifeOS.Utils.formatDate();
+                    // 日期筛选
+                    if (dateFilter.value === 'today') {
+                        result = result.filter(t => t.date === today || t.deadline === today);
+                    } else if (dateFilter.value === 'week') {
+                        const weekLater = LifeOS.Utils.formatDate(new Date(Date.now() + 7 * 86400000));
+                        result = result.filter(t => t.deadline >= today && t.deadline <= weekLater);
+                    }
+                    // 状态筛选
+                    if (statusFilter.value === 'pending') {
+                        result = result.filter(t => !t.completed);
+                    } else if (statusFilter.value === 'completed') {
+                        result = result.filter(t => t.completed);
+                    }
+                    return result;
+                });
+
+                const todayTasks = computed(() => {
+                    const today = LifeOS.Utils.formatDate();
+                    return allTasks.value.filter(t => t.date === today);
+                });
+
+                // 四象限分组
+                const q1Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-important' && (showCompletedInQuadrant.value || !t.completed)));
+                const q2Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'important-not-urgent' && (showCompletedInQuadrant.value || !t.completed)));
+                const q3Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-not-important' && (showCompletedInQuadrant.value || !t.completed)));
+                const q4Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'not-urgent-not-important' && (showCompletedInQuadrant.value || !t.completed)));
+
+                // 加载任务
+                const loadTasks = async () => {
+                    await LifeOS.Database.init();
+                    const today = LifeOS.Utils.formatDate();
+                    const allTasksData = await LifeOS.Task.getAll();
+                    
+                    // 为循环任务创建今日副本（如果不存在）
+                    // 只处理未完成的循环任务，已完成的不创建今日副本
+                    for (const task of allTasksData) {
+                        if (task.isRecurring && task.recurringRule && task.date !== today && !task.completed) {
+                            // 检查今日是否已有该任务
+                            const todayTasks = allTasksData.filter(t => t.date === today && t.title === task.title && !t.completed);
+                            if (todayTasks.length === 0) {
+                                // 创建今日副本
+                                const newTask = {
+                                    ...task,
+                                    id: LifeOS.Utils.generateId(),
+                                    date: today,
+                                    completed: false,
+                                    completedAt: null,
+                                    createdAt: LifeOS.Utils.now(),
+                                    updatedAt: LifeOS.Utils.now()
+                                };
+                                delete newTask.completedAt;
+                                await LifeOS.Task.create(newTask);
+                                allTasksData.push(newTask);
+                            }
+                        }
+                    }
+                    
+                    allTasks.value = allTasksData;
+                    updateCompletionRate();
+                };
+
+                // 更新完成率
+                const updateCompletionRate = () => {
+                    const today = LifeOS.Utils.formatDate();
+                    const todayTasksList = allTasks.value.filter(t => t.date === today);
+                    if (!todayTasksList.length) {
+                        completionRate.value = 0;
+                        return;
+                    }
+                    const completed = todayTasksList.filter(t => t.completed).length;
+                    completionRate.value = Math.round((completed / todayTasksList.length) * 100);
+                };
+
+                // 切换完成状态（带确认）
+                const toggleComplete = async (task) => {
+                    const action = task.completed ? '撤回完成' : '标记完成';
+                    if (!confirm(`确定${action}「${task.title}」？`)) return;
+                    const prevRate = completionRate.value;
+                    await LifeOS.Task.toggleComplete(task.id);
+                    await loadTasks();
+                    const newRate = completionRate.value;
+                    // 检测是否跨越阈值
+                    checkEncourageTrigger(prevRate, newRate);
+                };
+
+                // 检测激励触发
+                const checkEncourageTrigger = async (prevRate, newRate) => {
+                    if (prevRate < 75 && newRate >= 75) {
+                        // 跨越 75% 阈值：单人鼓励
+                        await showEncourageDialog(75);
+                    } else if (prevRate < 85 && newRate >= 85) {
+                        // 跨越 85% 阈值：多角色互动（简化版：单人+特别台词）
+                        await showEncourageDialog(85);
+                    }
+                };
+
+                // 显示激励弹窗
+                const showEncourageDialog = async (threshold) => {
+                    const chars = await LifeOS.Character.getAll();
+                    if (!chars.length) return;
+                    // 随机选择一个高优先级角色
+                    const sorted = chars.filter(c => c.priority >= 50).sort(() => Math.random() - 0.5);
+                    const char = sorted[0] || chars[0];
+                    encourageChar.value = char;
+                    
+                    // 生成台词
+                    if (threshold === 75) {
+                        encourageMessage.value = getEncourageLine(char);
+                    } else {
+                        encourageMessage.value = getGoodNightLine(char);
+                    }
+                    showEncourage.value = true;
+                };
+
+                const getEncourageLine = (char) => {
+                    // 优先使用角色的个性化台词
+                    if (char.exampleLines && char.exampleLines.encourage && char.exampleLines.encourage.length > 0) {
+                        const lines = char.exampleLines.encourage;
+                        return lines[Math.floor(Math.random() * lines.length)];
+                    }
+                    // 退回到通用模板
+                    const lines = [
+                        `今天也完成得不错嘛！不愧是我看好的你~`,
+                        `很棒哦！继续这样下去，你一定会变得更强的。`,
+                        `哼哼，你这家伙还挺能干的嘛，让我有点刮目相看了。`,
+                        `今天的努力不会白费的，我为你感到骄傲！`,
+                        `已经完成 ${completionRate.value}% 了，再加把劲！`
+                    ];
+                    return lines[Math.floor(Math.random() * lines.length)];
+                };
+
+                const getGoodNightLine = (char) => {
+                    // 优先使用角色的个性化晚安台词
+                    if (char.exampleLines && char.exampleLines.goodNight && char.exampleLines.goodNight.length > 0) {
+                        const lines = char.exampleLines.goodNight;
+                        return lines[Math.floor(Math.random() * lines.length)];
+                    }
+                    // 退回到通用模板
+                    return `今日完成率 ${completionRate.value}%！真了不起！辛苦了，晚安，明天也要一起加油哦~`;
+                };
+
+                const closeEncourage = () => {
+                    showEncourage.value = false;
+                    encourageChar.value = {};
+                };
+
+                // 添加/编辑任务
+                const openCreate = () => {
+                    editingTask.value = {};
+                    const today = LifeOS.Utils.formatDate();
+                    taskForm.value = {
+                        title: '',
+                        description: '',
+                        deadline: today,
+                        priority: 5,
+                        quadrant: '',
+                        category: '',
+                        isRecurring: false
+                    };
+                    showTaskModal.value = true;
+                };
+
+                const openDetail = (task) => {
+                    editingTask.value = task;
+                    taskForm.value = {
+                        title: task.title || '',
+                        description: task.description || '',
+                        deadline: task.deadline || '',
+                        priority: task.priority || 5,
+                        quadrant: task.quadrant || '',
+                        category: task.category || '',
+                        isRecurring: task.isRecurring || false
+                    };
+                    showTaskModal.value = true;
+                };
+
+                const closeTaskModal = () => {
+                    showTaskModal.value = false;
+                    editingTask.value = {};
+                };
+
+                const saveTask = async () => {
+                    if (!taskForm.value.title.trim()) {
+                        alert('请输入任务标题');
+                        return;
+                    }
+                    const data = {
+                        ...taskForm.value,
+                        date: LifeOS.Utils.formatDate(),
+                        updatedAt: LifeOS.Utils.now()
+                    };
+                    // 只有当用户没有手动选择象限时才自动计算
+                    // 检查是否是新创建的任务或用户没有更改象限
+                    const isNewTask = !editingTask.value.id;
+                    const quadrantUnchanged = editingTask.value.id && editingTask.value.quadrant === data.quadrant;
+                    if (isNewTask && !data.quadrant) {
+                        data.quadrant = LifeOS.Utils.calculateQuadrant(data.deadline, data.priority);
+                    }
+                    // 如果截止日期超过7天，自动设置为循环任务
+                    if (data.deadline) {
+                        const deadlineDate = new Date(data.deadline);
+                        const today = new Date();
+                        const daysDiff = Math.ceil((deadlineDate - today) / (1000 * 60 * 60 * 24));
+                        if (daysDiff > 7) {
+                            data.isRecurring = true;
+                            data.recurringRule = { type: 'daily' };
+                        }
+                    }
+                    if (editingTask.value.id) {
+                        await LifeOS.Task.update(editingTask.value.id, data);
+                    } else {
+                        await LifeOS.Task.create(data);
+                    }
+                    await loadTasks();
+                    closeTaskModal();
+                };
+
+                const deleteTask = async () => {
+                    if (!confirm('确定删除此任务？')) return;
+                    await LifeOS.Task.delete(editingTask.value.id);
+                    await loadTasks();
+                    closeTaskModal();
+                };
+
+                // 倒计时计算
+                const getDeadlinePercent = (task) => {
+                    if (!task.deadline) return 0;
+                    const days = LifeOS.Utils.daysBetween(new Date(), new Date(task.deadline));
+                    if (days <= 0) return 100;
+                    if (days >= 30) return 5;
+                    return Math.round((30 - days) / 30 * 100);
+                };
+
+                const getDeadlineColor = (task) => {
+                    if (!task.deadline) return '#94A3B8';
+                    const days = LifeOS.Utils.daysBetween(new Date(), new Date(task.deadline));
+                    if (days <= 1) return '#EF4444';  // 红色：紧急
+                    if (days <= 3) return '#FBBF24';  // 黄色：警告
+                    return '#34D399';                   // 绿色：充裕
+                };
+
+                const getDeadlineText = (task) => {
+                    if (!task.deadline) return '';
+                    const days = LifeOS.Utils.daysBetween(new Date(), new Date(task.deadline));
+                    if (days < 0) return '已逾期';
+                    if (days === 0) return '今天截止';
+                    return `还剩 ${days} 天`;
+                };
+
+                onMounted(loadTasks);
+
+                return {
+                    allTasks, showFilter, dateFilter, statusFilter, showCompletedInQuadrant,
+                    showTaskModal, editingTask, taskForm, completionRate,
+                    showEncourage, encourageChar, encourageMessage,
+                    dateFilters, statusFilters, quadrantOptions,
+                    filteredTasks, todayTasks,
+                    q1Tasks, q2Tasks, q3Tasks, q4Tasks,
+                    toggleComplete, openCreate, openDetail, closeTaskModal,
+                    saveTask, deleteTask, closeEncourage,
+                    getDeadlinePercent, getDeadlineColor, getDeadlineText
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

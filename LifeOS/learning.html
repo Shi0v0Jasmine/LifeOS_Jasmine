@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 学习日记</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+    <style>
+        /* ===== 学习日记页面专属样式 ===== */
+        .learning-container { display: flex; flex-direction: column; gap: 24px; }
+
+        /* 统计面板 */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+        .stat-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 20px; text-align: center;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-value { font-size: 2rem; font-weight: 700; font-family: var(--font-sans); }
+        .stat-value.gold { color: var(--color-gold-deep); }
+        .stat-value.blue { color: var(--color-water-deep); }
+        .stat-value.green { color: var(--color-mint-deep); }
+        .stat-value.purple { color: #8B5CF6; }
+        .stat-label { font-size: 0.875rem; color: var(--text-secondary); margin-top: 4px; }
+
+        /* 技能树视图切换 */
+        .view-tabs { display: flex; gap: 8px; justify-content: center; margin-bottom: 8px; }
+        .view-tab { padding: 8px 20px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: var(--bg-card); cursor: pointer; font-size: 0.875rem; transition: all 0.2s; font-family: inherit; color: var(--text-secondary); }
+        .view-tab:hover { background: var(--bg-hover); }
+        .view-tab.active { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+
+        /* 技能列表（树形） */
+        .skills-section { display: flex; flex-direction: column; gap: 12px; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; }
+        .section-title { font-size: 1.125rem; font-weight: 600; }
+        .add-btn { background: var(--color-water-deep); color: white; border: none; border-radius: var(--radius-md); padding: 8px 16px; cursor: pointer; font-size: 0.875rem; transition: background 0.2s, box-shadow 0.2s; display: flex; align-items: center; gap: 6px; }
+        .add-btn:hover { background: var(--color-mint-deep); box-shadow: var(--shadow-glow); }
+
+        .skill-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 16px 20px; display: flex; align-items: center; gap: 16px;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s; cursor: pointer; position: relative; overflow: hidden;
+        }
+        .skill-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--color-water-light); }
+        .skill-card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 4px 0 0 4px; opacity: 0.7;
+        }
+        .skill-card.level-up::before { background: var(--color-gold-deep); opacity: 1; box-shadow: 0 0 8px var(--color-gold); }
+        .skill-card.level-up { border-color: var(--color-gold); animation: levelUpPulse 0.6s ease; }
+        @keyframes levelUpPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 rgba(253, 230, 138, 0); }
+            50% { transform: scale(1.02); box-shadow: 0 0 20px rgba(253, 230, 138, 0.5); }
+            100% { transform: scale(1); box-shadow: 0 0 0 rgba(253, 230, 138, 0); }
+        }
+
+        .skill-indent { flex-shrink: 0; width: 24px; }
+        .skill-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; flex-shrink: 0; background: var(--bg-hover); }
+        .skill-info { flex: 1; min-width: 0; }
+        .skill-header-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+        .skill-name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .skill-badge {
+            font-size: 0.7rem; padding: 2px 10px; border-radius: 12px; font-weight: 600; font-family: var(--font-sans);
+            background: var(--color-gold-light); color: var(--color-gold-deep); border: 1px solid var(--color-gold);
+        }
+        .skill-badge.short { background: var(--color-mint-light); color: var(--color-mint-deep); border-color: var(--color-mint); }
+        .skill-badge.long { background: var(--color-water-light); color: var(--color-water-deep); border-color: var(--color-water-deep); }
+        .skill-meta { font-size: 0.75rem; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap; }
+        .skill-meta-item { display: flex; align-items: center; gap: 4px; }
+        .skill-xp-bar { width: 120px; height: 8px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; flex-shrink: 0; }
+        .skill-xp-fill { height: 100%; border-radius: 4px; transition: width 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .skill-xp-text { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-sans); text-align: right; margin-top: 2px; }
+
+        .skill-actions { display: flex; gap: 8px; align-items: center; }
+        .xp-btn-group { display: flex; gap: 4px; }
+        .xp-btn {
+            padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-light); background: white;
+            cursor: pointer; font-size: 0.75rem; font-family: var(--font-sans); transition: all 0.15s; color: var(--text-secondary);
+        }
+        .xp-btn:hover { background: var(--color-mint-light); border-color: var(--color-mint); color: var(--color-mint-deep); transform: translateY(-1px); }
+        .xp-btn:active { transform: translateY(0); }
+        .skill-menu-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; transition: background 0.2s; }
+        .skill-menu-btn:hover { background: var(--bg-hover); }
+
+        .custom-xp-input {
+            width: 60px; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: var(--radius-sm);
+            background: white; font-family: var(--font-sans); font-size: 0.75rem; text-align: center; transition: all 0.2s;
+        }
+        .custom-xp-input:focus { outline: none; border-color: var(--color-mint); box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15); }
+        .custom-xp-confirm {
+            padding: 4px 10px; border-radius: var(--radius-sm); border: none; background: var(--color-mint); color: white;
+            cursor: pointer; font-size: 0.75rem; font-family: var(--font-sans); transition: background 0.15s; margin-left: 2px;
+        }
+        .custom-xp-confirm:hover { background: var(--color-mint-deep); }
+        .custom-xp-toggle {
+            padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-light); background: white;
+            cursor: pointer; font-size: 0.75rem; font-family: var(--font-sans); color: var(--text-secondary); transition: all 0.15s;
+        }
+        .custom-xp-toggle:hover { border-color: var(--color-mint); color: var(--color-mint-deep); }
+
+        .skill-children { margin-left: 28px; border-left: 2px dashed var(--border-light); padding-left: 12px; display: flex; flex-direction: column; gap: 12px; }
+        .skill-children .skill-card { margin-left: 0; }
+
+        /* 展开详情 */
+        .skill-detail { padding: 12px 0 0 64px; border-top: 1px solid var(--border-light); margin-top: 12px; }
+        .detail-section { margin-bottom: 16px; }
+        .detail-title { font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .detail-content { font-size: 0.875rem; line-height: 1.6; color: var(--text-primary); }
+        .notes-list { display: flex; flex-direction: column; gap: 8px; }
+        .note-item {
+            background: rgba(255,255,255,0.5); border-radius: var(--radius-md); padding: 10px 14px; border: 1px solid var(--border-light);
+            font-size: 0.875rem; line-height: 1.5; transition: border-color 0.2s;
+        }
+        .note-item:hover { border-color: var(--color-water-light); }
+        .note-date { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+        .note-empty { color: var(--text-muted); font-style: italic; font-size: 0.875rem; padding: 12px; text-align: center; }
+
+        .add-note-area { display: flex; gap: 8px; margin-top: 8px; }
+        .add-note-input { flex: 1; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem; }
+        .add-note-input:focus { outline: none; border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15); }
+        .add-note-btn { padding: 8px 14px; border: none; border-radius: var(--radius-md); background: var(--color-mint); color: white; cursor: pointer; font-size: 0.75rem; font-family: var(--font-sans); transition: background 0.2s; }
+        .add-note-btn:hover { background: var(--color-mint-deep); }
+
+        /* 空状态 */
+        .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+        .empty-state .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state p { font-size: 0.875rem; }
+        .empty-cta { margin-top: 16px; }
+
+        /* 弹窗 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 24px; width: 90%; max-width: 480px; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 1.25rem; font-weight: 600; }
+        .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; }
+        .modal-close:hover { background: var(--bg-hover); }
+
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 6px; color: var(--text-secondary); }
+        .form-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem; transition: border-color 0.2s, box-shadow 0.2s; }
+        .form-input:focus { outline: none; border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.2); }
+        .form-select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem; }
+        .form-textarea { width: 100%; min-height: 80px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem; line-height: 1.5; }
+        .form-textarea:focus { outline: none; border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15); }
+        .form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+        .checkbox-group { display: flex; gap: 16px; flex-wrap: wrap; }
+        .checkbox-item { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.875rem; }
+        .checkbox-item input { cursor: pointer; }
+        .color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+        .color-option { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: transform 0.2s; }
+        .color-option:hover { transform: scale(1.1); }
+        .color-option.selected { border-color: var(--text-primary); transform: scale(1.15); }
+
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+        .btn { padding: 10px 20px; border-radius: var(--radius-md); border: none; cursor: pointer; font-size: 0.875rem; font-family: inherit; transition: background 0.2s; }
+        .btn-secondary { background: var(--bg-hover); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--border-light); }
+        .btn-primary { background: var(--color-water-deep); color: white; }
+        .btn-primary:hover { background: var(--color-mint-deep); }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: var(--color-urgent); }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+
+        /* 角色升级激励弹窗 */
+        .levelup-overlay { background: rgba(0,0,0,0.5); }
+        .levelup-modal { text-align: center; padding: 40px 32px; max-width: 400px; border: 2px solid var(--color-gold); }
+        .levelup-stars { font-size: 2rem; margin-bottom: 12px; animation: starBurst 0.8s ease; }
+        @keyframes starBurst {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .levelup-title { font-size: 1.5rem; font-weight: 700; color: var(--color-gold-deep); margin-bottom: 8px; }
+        .levelup-subtitle { font-size: 1rem; color: var(--text-primary); margin-bottom: 16px; }
+        .levelup-skill { display: inline-block; padding: 4px 16px; border-radius: 20px; background: var(--color-gold-light); font-weight: 600; margin-bottom: 16px; }
+        .levelup-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--color-gold); margin: 0 auto 12px; }
+        .levelup-avatar-placeholder { width: 80px; height: 80px; border-radius: 50%; background: var(--color-water-light); display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 12px; border: 3px solid var(--color-gold); }
+        .levelup-message { font-size: 1rem; line-height: 1.6; color: var(--text-primary); margin-bottom: 20px; padding: 0 8px; }
+        .levelup-btn { background: var(--color-gold); color: var(--text-primary); border: none; border-radius: var(--radius-md); padding: 12px 32px; cursor: pointer; font-size: 1rem; font-weight: 600; transition: background 0.2s, transform 0.2s; }
+        .levelup-btn:hover { background: var(--color-gold-deep); transform: scale(1.05); }
+
+        @media (max-width: 768px) {
+            .stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .stat-card { padding: 12px; }
+            .stat-value { font-size: 1.5rem; }
+            .skill-card { padding: 12px 14px; gap: 10px; }
+            .skill-xp-bar { width: 80px; }
+            .xp-btn { padding: 4px 8px; font-size: 0.7rem; }
+            .skill-detail { padding-left: 48px; }
+            .skill-children { margin-left: 16px; padding-left: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="learning"></sidebar>
+        <main class="main-content">
+            <header class="page-header">
+                <h2>学习日记</h2>
+            </header>
+            <section class="page-content learning-container">
+
+                <!-- 统计面板 -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value gold">{{ totalXP }}</div>
+                        <div class="stat-label">总 XP</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value blue">{{ totalLevel }}</div>
+                        <div class="stat-label">总等级</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value green">{{ skills.length }}</div>
+                        <div class="stat-label">技能数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value purple">{{ maxLevel }}</div>
+                        <div class="stat-label">最高等级</div>
+                    </div>
+                </div>
+
+                <!-- 视图切换（预留） -->
+                <div class="view-tabs">
+                    <button :class="['view-tab', { active: viewMode === 'list' }]" @click="viewMode = 'list'">📋 列表</button>
+                    <button :class="['view-tab', { active: viewMode === 'tree' }]" @click="viewMode = 'tree'" disabled title="星图/树状图视图 — v1.1 开发">🌟 星图</button>
+                </div>
+
+                <!-- 技能列表 -->
+                <div class="skills-section">
+                    <div class="section-header">
+                        <div class="section-title">技能树</div>
+                        <button class="add-btn" @click="openCreate">
+                            <span>+</span> 添加技能
+                        </button>
+                    </div>
+                    <div v-if="rootSkills.length === 0" class="empty-state">
+                        <div class="icon">🌱</div>
+                        <p>还没有技能哦，添加第一个学习主题吧！</p>
+                        <div class="empty-cta">
+                            <button class="add-btn" @click="openCreate">添加技能</button>
+                        </div>
+                    </div>
+                    <!-- 根技能 + 递归子技能 -->
+                    <div v-for="skill in rootSkills" :key="skill.id">
+                        <skill-card
+                            :skill="skill"
+                            :children="getChildren(skill.id)"
+                            :expanded="expandedSkills[skill.id]"
+                            :level="0"
+                            @toggle="toggleExpand(skill.id)"
+                            @add-xp="addXP"
+                            @edit="openEdit"
+                            @delete="deleteSkill"
+                            @add-note="addNote"
+                        />
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 添加/编辑技能弹窗 -->
+        <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">{{ editingSkill.id ? '编辑技能' : '添加技能' }}</div>
+                    <button class="modal-close" @click="closeModal">×</button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">技能名称</label>
+                    <input class="form-input" v-model="skillForm.name" placeholder="例如：日语 N2、Python 进阶、React 开发...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">描述</label>
+                    <textarea class="form-textarea" v-model="skillForm.description" placeholder="这个技能的目标是什么？你想达到什么水平？"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">父技能（可选）</label>
+                    <select class="form-select" v-model="skillForm.parentId">
+                        <option value="">— 作为根技能 —</option>
+                        <option v-for="s in availableParents" :key="s.id" :value="s.id">{{ s.name }}</option>
+                    </select>
+                    <div class="form-hint">选择父技能后，该技能将作为子技能挂在树下</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">目标类型</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-item">
+                            <input type="checkbox" v-model="skillForm.isShortTerm"> 短期目标
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="checkbox" v-model="skillForm.isLongTerm"> 长期目标
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group" v-if="skillForm.isShortTerm || skillForm.isLongTerm">
+                    <label class="form-label">截止日期</label>
+                    <input type="date" class="form-input" v-model="skillForm.deadline">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">颜色</label>
+                    <div class="color-picker">
+                        <div v-for="c in colorOptions" :key="c" :class="['color-option', { 'selected': skillForm.color === c }]" :style="{ background: c }" @click="skillForm.color = c"></div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button v-if="editingSkill.id" class="btn btn-danger" @click="confirmDelete">删除</button>
+                    <button class="btn btn-secondary" @click="closeModal">取消</button>
+                    <button class="btn btn-primary" @click="saveSkill">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 升级激励弹窗 -->
+        <div v-if="showLevelUp" class="modal-overlay levelup-overlay" @click.self="closeLevelUp">
+            <div class="modal levelup-modal">
+                <div class="levelup-stars">✨ 🌟 ✨</div>
+                <div class="levelup-title">Level Up!</div>
+                <div class="levelup-subtitle">{{ levelUpSkill.name }} 升级了！</div>
+                <div class="levelup-skill" :style="{ background: levelUpSkill.color + '20', color: levelUpSkill.color }">
+                    Lv.{{ levelUpSkill.level }} {{ levelUpSkill.name }}
+                </div>
+                <div v-if="levelUpChar.avatar" class="levelup-avatar">
+                    <img :src="levelUpChar.avatar" class="levelup-avatar" alt="">
+                </div>
+                <div v-else class="levelup-avatar-placeholder">{{ levelUpChar.name ? levelUpChar.name.charAt(0) : '?' }}</div>
+                <div class="levelup-message">{{ levelUpMessage }}</div>
+                <button class="levelup-btn" @click="closeLevelUp">太棒了！</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, h } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊', ariaLabel: '仪表盘' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰', ariaLabel: '时间轴' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋', ariaLabel: '任务' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅', ariaLabel: '习惯' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝', ariaLabel: '每日回顾' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓', ariaLabel: '学习日记' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤', ariaLabel: '角色库' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️', ariaLabel: '设置' }
+                ]);
+                const activeNavItems = computed(() => navItems.value.map(item => ({ ...item, active: item.id === props.activePage })));
+                const today = computed(() => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+                return { sidebarCollapsed, activeNavItems, today };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav" aria-label="主导航">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                    <div class="sidebar-timeline" v-show="!sidebarCollapsed">
+                        <div class="timeline-header"><h3>今日时间轴</h3><span class="timeline-date">{{ today }}</span></div>
+                        <div class="timeline-preview"><p class="placeholder">暂无记录</p><p class="hint">前往时间轴页面添加</p></div>
+                    </div>
+                </aside>
+            `
+        };
+
+        // 技能卡片组件（递归渲染子技能）
+        const SkillCard = {
+            name: 'SkillCard',
+            props: ['skill', 'children', 'expanded', 'level'],
+            emits: ['toggle', 'add-xp', 'edit', 'delete', 'add-note'],
+            setup(props, { emit }) {
+                const newNote = ref('');
+                const customXP = ref('');
+                const showCustom = ref(false);
+                const xpPercent = computed(() => {
+                    return Math.min(100, Math.round((props.skill.xp / props.skill.xpToNext) * 100));
+                });
+                const skillIcon = computed(() => {
+                    const icons = ['🌱', '🌿', '🌳', '⭐', '👑', '🔥', '💎', '🌟'];
+                    return icons[Math.min(props.skill.level - 1, icons.length - 1)];
+                });
+                const submitNote = () => {
+                    if (!newNote.value.trim()) return;
+                    emit('add-note', props.skill.id, newNote.value.trim());
+                    newNote.value = '';
+                };
+                const submitCustomXP = () => {
+                    const amount = parseInt(customXP.value, 10);
+                    if (!isNaN(amount) && amount > 0) {
+                        emit('add-xp', props.skill.id, amount);
+                        customXP.value = '';
+                        showCustom.value = false;
+                    }
+                };
+                return { newNote, customXP, showCustom, xpPercent, skillIcon, emit, submitNote, submitCustomXP };
+            },
+            template: `
+                <div>
+                    <div class="skill-card" :class="{ 'level-up': skill.recentLevelUp }" :style="{ borderLeftColor: skill.color }">
+                        <div class="skill-indent" :style="{ width: (level * 24) + 'px' }"></div>
+                        <div class="skill-icon" :style="{ background: skill.color + '20', color: skill.color }">
+                            {{ skillIcon }}
+                        </div>
+                        <div class="skill-info">
+                            <div class="skill-header-row">
+                                <span class="skill-name">{{ skill.name }}</span>
+                                <span class="skill-badge">Lv.{{ skill.level }}</span>
+                                <span v-if="skill.isShortTerm" class="skill-badge short">短期</span>
+                                <span v-if="skill.isLongTerm" class="skill-badge long">长期</span>
+                            </div>
+                            <div class="skill-meta">
+                                <span class="skill-meta-item">{{ skill.xp }} / {{ skill.xpToNext }} XP</span>
+                                <span v-if="skill.deadline" class="skill-meta-item">⏰ {{ skill.deadline }}</span>
+                                <span v-if="children.length" class="skill-meta-item">🌿 {{ children.length }} 子技能</span>
+                            </div>
+                        </div>
+                        <div class="skill-xp-bar">
+                            <div class="skill-xp-fill" :style="{ width: xpPercent + '%', background: skill.color }"></div>
+                            <div class="skill-xp-text">{{ xpPercent }}%</div>
+                        </div>
+                        <div class="skill-actions">
+                            <div class="xp-btn-group">
+                                <button class="xp-btn" @click.stop="emit('add-xp', skill.id, 10)">+10</button>
+                                <button class="xp-btn" @click.stop="emit('add-xp', skill.id, 50)">+50</button>
+                                <button class="xp-btn" @click.stop="emit('add-xp', skill.id, 100)">+100</button>
+                                <button v-if="!showCustom" class="custom-xp-toggle" @click.stop="showCustom = true">自定义</button>
+                                <template v-if="showCustom">
+                                    <input class="custom-xp-input" type="number" v-model="customXP" placeholder="XP" min="1" max="9999" @keyup.enter="submitCustomXP" @click.stop ref="customInputRef">
+                                    <button class="custom-xp-confirm" @click.stop="submitCustomXP">✓</button>
+                                </template>
+                            </div>
+                            <button class="skill-menu-btn" @click.stop="emit('toggle', skill.id)" :title="expanded ? '收起' : '展开'">
+                                {{ expanded ? '▼' : '▶' }}
+                            </button>
+                            <button class="skill-menu-btn" @click.stop="emit('edit', skill)" title="编辑">✏️</button>
+                            <button class="skill-menu-btn" @click.stop="emit('delete', skill)" title="删除">🗑️</button>
+                        </div>
+                    </div>
+                    <!-- 展开详情 -->
+                    <div v-if="expanded" class="skill-detail">
+                        <div class="detail-section" v-if="skill.description">
+                            <div class="detail-title">📝 描述</div>
+                            <div class="detail-content">{{ skill.description }}</div>
+                        </div>
+                        <div class="detail-section">
+                            <div class="detail-title">🍎 学习笔记</div>
+                            <div class="notes-list">
+                                <div v-for="note in skill.notes || []" :key="note.id" class="note-item">
+                                    <div>{{ note.text }}</div>
+                                    <div class="note-date">{{ note.date }}</div>
+                                </div>
+                                <div v-if="!(skill.notes || []).length" class="note-empty">还没有笔记，添加第一条学习记录吧~</div>
+                            </div>
+                            <div class="add-note-area">
+                                <input class="add-note-input" v-model="newNote" placeholder="记录今天学到什么..." @keyup.enter="submitNote">
+                                <button class="add-note-btn" @click="submitNote">添加</button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 递归子技能 -->
+                    <div v-if="expanded && children.length" class="skill-children">
+                        <skill-card
+                            v-for="child in children"
+                            :key="child.id"
+                            :skill="child"
+                            :children="[]"
+                            :expanded="false"
+                            :level="level + 1"
+                            @toggle="(id) => emit('toggle', id)"
+                            @add-xp="(id, amount) => emit('add-xp', id, amount)"
+                            @edit="(s) => emit('edit', s)"
+                            @delete="(s) => emit('delete', s)"
+                            @add-note="(id, text) => emit('add-note', id, text)"
+                        />
+                    </div>
+                </div>
+            `,
+        };
+
+        createApp({
+            components: { Sidebar, SkillCard },
+            setup() {
+                const skills = ref([]);
+                const viewMode = ref('list');
+                const expandedSkills = ref({});
+                const showModal = ref(false);
+                const editingSkill = ref({});
+                const skillForm = ref({ name: '', description: '', parentId: '', color: '#7DD3FC', isShortTerm: false, isLongTerm: false, deadline: '' });
+                const showLevelUp = ref(false);
+                const levelUpSkill = ref({});
+                const levelUpChar = ref({});
+                const levelUpMessage = ref('');
+                const colorOptions = ['#7DD3FC', '#34D399', '#FDE68A', '#F59E0B', '#EF4444', '#A78BFA', '#F472B6', '#1A472A', '#0E1A40', '#8B5CF6', '#06B6D4', '#84CC16'];
+
+                const loadSkills = async () => {
+                    skills.value = await LifeOS.Skill.getAll();
+                };
+
+                const rootSkills = computed(() => skills.value.filter(s => !s.parentId).sort((a, b) => b.level - a.level));
+                const getChildren = (parentId) => skills.value.filter(s => s.parentId === parentId).sort((a, b) => b.level - a.level);
+
+                const totalXP = computed(() => skills.value.reduce((sum, s) => sum + s.xp + (s.level - 1) * s.xpToNext, 0));
+                const totalLevel = computed(() => skills.value.reduce((sum, s) => sum + s.level, 0));
+                const maxLevel = computed(() => skills.value.length ? Math.max(...skills.value.map(s => s.level)) : 0);
+
+                const availableParents = computed(() => {
+                    if (!editingSkill.value.id) return skills.value;
+                    // 编辑时排除自己和自己的后代，避免循环
+                    const descendants = new Set();
+                    const collect = (id) => {
+                        const children = skills.value.filter(s => s.parentId === id);
+                        children.forEach(c => { descendants.add(c.id); collect(c.id); });
+                    };
+                    collect(editingSkill.value.id);
+                    descendants.add(editingSkill.value.id);
+                    return skills.value.filter(s => !descendants.has(s.id));
+                });
+
+                const toggleExpand = (id) => {
+                    expandedSkills.value[id] = !expandedSkills.value[id];
+                };
+
+                // 添加 XP
+                const addXP = async (id, amount) => {
+                    const before = await LifeOS.Skill.getAll();
+                    const beforeSkill = before.find(s => s.id === id);
+                    const beforeLevel = beforeSkill ? beforeSkill.level : 1;
+
+                    const updated = await LifeOS.Skill.addXP(id, amount);
+                    await loadSkills();
+
+                    if (updated && updated.level > beforeLevel) {
+                        // 升级了！触发激励
+                        showLevelUpDialog(updated);
+                    }
+                };
+
+                // 升级激励弹窗
+                const showLevelUpDialog = async (skill) => {
+                    const chars = await LifeOS.Character.getAll();
+                    if (!chars.length) return;
+                    const sorted = chars.filter(c => c.priority >= 50).sort(() => Math.random() - 0.5);
+                    const char = sorted[0] || chars[0];
+                    levelUpChar.value = char;
+                    levelUpSkill.value = skill;
+
+                    if (char.exampleLines && char.exampleLines.encourage && char.exampleLines.encourage.length > 0) {
+                        const lines = char.exampleLines.encourage;
+                        levelUpMessage.value = lines[Math.floor(Math.random() * lines.length)];
+                    } else {
+                        levelUpMessage.value = `恭喜！「${skill.name}」升级到 Lv.${skill.level}！继续加油！`;
+                    }
+                    showLevelUp.value = true;
+
+                    // 标记技能为最近升级（显示动画）
+                    const s = skills.value.find(s => s.id === skill.id);
+                    if (s) { s.recentLevelUp = true; setTimeout(() => { s.recentLevelUp = false; }, 2000); }
+                };
+                const closeLevelUp = () => { showLevelUp.value = false; levelUpChar.value = {}; levelUpSkill.value = {}; };
+
+                // 学习笔记
+                const addNote = async (skillId, text) => {
+                    const skill = skills.value.find(s => s.id === skillId);
+                    if (!skill) return;
+                    const notes = skill.notes || [];
+                    notes.push({ id: LifeOS.Utils.generateId(), text, date: LifeOS.Utils.formatDate() });
+                    await LifeOS.Skill.update(skillId, { notes });
+                    await loadSkills();
+                    // 保持展开状态
+                    expandedSkills.value[skillId] = true;
+                };
+
+                // CRUD
+                const openCreate = () => {
+                    editingSkill.value = {};
+                    skillForm.value = { name: '', description: '', parentId: '', color: '#7DD3FC', isShortTerm: false, isLongTerm: false, deadline: '' };
+                    showModal.value = true;
+                };
+                const openEdit = (skill) => {
+                    editingSkill.value = skill;
+                    skillForm.value = {
+                        name: skill.name, description: skill.description || '', parentId: skill.parentId || '',
+                        color: skill.color, isShortTerm: skill.isShortTerm || false, isLongTerm: skill.isLongTerm || false,
+                        deadline: skill.deadline || ''
+                    };
+                    showModal.value = true;
+                };
+                const closeModal = () => { showModal.value = false; };
+                const saveSkill = async () => {
+                    if (!skillForm.value.name.trim()) return;
+                    const data = { ...skillForm.value };
+                    if (!data.parentId) data.parentId = null;
+                    if (!data.isShortTerm && !data.isLongTerm) data.deadline = null;
+                    if (editingSkill.value.id) {
+                        await LifeOS.Skill.update(editingSkill.value.id, data);
+                    } else {
+                        await LifeOS.Skill.create(data);
+                    }
+                    await loadSkills();
+                    closeModal();
+                };
+                const deleteSkill = async (skill) => {
+                    if (!confirm(`确定删除技能「${skill.name}」？${getChildren(skill.id).length ? '所有子技能也会一并删除！' : ''}`)) return;
+                    // 递归删除子技能
+                    const deleteRecursively = async (id) => {
+                        const children = getChildren(id);
+                        for (const c of children) await deleteRecursively(c.id);
+                        await LifeOS.Skill.delete(id);
+                    };
+                    await deleteRecursively(skill.id);
+                    await loadSkills();
+                };
+                const confirmDelete = () => { if (editingSkill.value.id) deleteSkill(editingSkill.value); closeModal(); };
+
+                onMounted(loadSkills);
+
+                return {
+                    skills, rootSkills, getChildren, viewMode, expandedSkills,
+                    totalXP, totalLevel, maxLevel, availableParents,
+                    showModal, editingSkill, skillForm, colorOptions,
+                    showLevelUp, levelUpSkill, levelUpChar, levelUpMessage,
+                    toggleExpand, addXP, addNote,
+                    openCreate, openEdit, closeModal, saveSkill, deleteSkill, confirmDelete,
+                    closeLevelUp
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

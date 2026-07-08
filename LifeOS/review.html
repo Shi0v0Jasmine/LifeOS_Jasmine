@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 每日回顾</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+    <style>
+        /* ===== 回顾页面专属样式 ===== */
+        .review-container { display: flex; flex-direction: column; gap: 20px; max-width: 800px; margin: 0 auto; }
+
+        /* 日期导航 */
+        .date-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 8px; }
+        .date-nav-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border-light); background: var(--bg-card); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem; transition: background 0.2s, transform 0.15s; }
+        .date-nav-btn:hover { background: var(--bg-hover); transform: scale(1.1); }
+        .date-display { font-size: 1.25rem; font-weight: 600; font-family: var(--font-sans); min-width: 200px; text-align: center; }
+        .date-today-btn { font-size: 0.75rem; padding: 4px 12px; border-radius: 12px; border: 1px solid var(--color-water-deep); background: var(--color-water-light); color: var(--color-water-deep); cursor: pointer; transition: background 0.2s; }
+        .date-today-btn:hover { background: var(--color-water-deep); color: white; }
+        .date-input { font-family: inherit; font-size: 1rem; padding: 6px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-primary); }
+
+        /* 情绪选择 */
+        .emotion-section { background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg); border: 1px solid var(--border-card); padding: 20px; text-align: center; }
+        .emotion-title { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 12px; }
+        .emotion-options { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; }
+        .emotion-btn { width: 48px; height: 48px; border-radius: 50%; border: 2px solid transparent; background: var(--bg-hover); cursor: pointer; font-size: 1.5rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .emotion-btn:hover { transform: scale(1.15); background: var(--color-water-light); }
+        .emotion-btn.selected { border-color: var(--color-water-deep); background: var(--color-water-light); transform: scale(1.1); box-shadow: 0 0 12px rgba(125, 211, 252, 0.3); }
+        .emotion-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+        /* 四栏复盘卡片 */
+        .review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .review-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 20px; display: flex; flex-direction: column;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .review-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .review-card.full-width { grid-column: 1 / -1; }
+
+        .review-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .review-card-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+        .review-card-title { font-weight: 600; font-size: 1rem; }
+        .review-card-hint { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; }
+
+        .review-textarea {
+            flex: 1; min-height: 120px; resize: vertical; padding: 12px; border: 1px solid var(--border-light);
+            border-radius: var(--radius-md); background: rgba(255,255,255,0.6); font-family: inherit; font-size: 0.875rem;
+            line-height: 1.6; color: var(--text-primary); transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .review-textarea:focus { outline: none; border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.15); }
+        .review-textarea::placeholder { color: var(--text-muted); }
+
+        /* 卡片颜色主题 */
+        .card-did .review-card-icon { background: var(--color-mint-light); }
+        .card-did .review-card-title { color: var(--color-mint-deep); }
+        .card-good .review-card-icon { background: var(--color-gold-light); }
+        .card-good .review-card-title { color: var(--color-gold-deep); }
+        .card-bad .review-card-icon { background: rgba(239, 68, 68, 0.1); }
+        .card-bad .review-card-title { color: var(--color-urgent); }
+        .card-thoughts .review-card-icon { background: var(--color-water-light); }
+        .card-thoughts .review-card-title { color: var(--color-water-deep); }
+        .card-diary .review-card-icon { background: rgba(167, 139, 250, 0.15); }
+        .card-diary .review-card-title { color: #8B5CF6; }
+
+        /* GRAI 分析面板 */
+        .grai-section { background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg); border: 1px solid var(--border-card); padding: 20px; }
+        .grai-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+        .grai-title { font-weight: 600; font-size: 1.1rem; }
+        .grai-badge { font-size: 0.7rem; padding: 2px 10px; border-radius: 12px; background: var(--color-water-light); color: var(--color-water-deep); }
+        .grai-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        .grai-item { background: rgba(255,255,255,0.5); border-radius: var(--radius-md); padding: 14px; border-left: 3px solid; }
+        .grai-item.goal { border-left-color: var(--color-mint); }
+        .grai-item.result { border-left-color: var(--color-water-deep); }
+        .grai-item.analysis { border-left-color: var(--color-gold-deep); }
+        .grai-item.insight { border-left-color: var(--color-urgent); }
+        .grai-item-label { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .grai-item-content { font-size: 0.875rem; line-height: 1.5; color: var(--text-primary); min-height: 60px; }
+        .grai-item-placeholder { color: var(--text-muted); font-style: italic; }
+        .grai-analyze-btn { margin-top: 16px; width: 100%; padding: 12px; border: none; border-radius: var(--radius-md); background: var(--color-ravenclaw-blue); color: white; font-family: inherit; font-size: 0.875rem; cursor: pointer; transition: background 0.2s; }
+        .grai-analyze-btn:hover { background: var(--color-slytherin-green); }
+        .grai-analyze-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        /* 保存栏 */
+        .save-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 0; }
+        .save-status { font-size: 0.875rem; color: var(--text-secondary); }
+        .save-status.saved { color: var(--color-mint-deep); }
+        .save-btn { padding: 12px 32px; border: none; border-radius: var(--radius-md); background: var(--color-water-deep); color: white; font-family: inherit; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s, box-shadow 0.2s, transform 0.15s; }
+        .save-btn:hover { background: var(--color-mint-deep); box-shadow: var(--shadow-glow); transform: translateY(-1px); }
+        .save-btn:active { transform: translateY(0); }
+
+        /* 历史回顾侧边栏 */
+        .history-sidebar { background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg); border: 1px solid var(--border-card); padding: 16px; max-height: 400px; overflow-y: auto; }
+        .history-title { font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 12px; }
+        .history-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; transition: background 0.15s; margin-bottom: 4px; }
+        .history-item:hover { background: var(--bg-hover); }
+        .history-item.active { background: var(--color-water-light); }
+        .history-date { font-size: 0.8rem; font-weight: 600; font-family: var(--font-sans); min-width: 80px; }
+        .history-emotion { font-size: 1rem; }
+        .history-snippet { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+        .history-empty { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.8rem; }
+
+        /* 角色激励弹窗 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .encourage-modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 32px; text-align: center; max-width: 380px; box-shadow: var(--shadow-lg); }
+        .encourage-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid var(--color-gold); margin: 0 auto 12px; }
+        .encourage-avatar-placeholder { width: 80px; height: 80px; border-radius: 50%; background: var(--color-water-light); display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 12px; border: 3px solid var(--color-gold); }
+        .encourage-name { font-size: 1.125rem; font-weight: 600; margin-bottom: 8px; }
+        .encourage-message { font-size: 1rem; line-height: 1.6; color: var(--text-primary); margin-bottom: 16px; }
+        .encourage-btn { background: var(--color-gold); color: var(--text-primary); border: none; border-radius: var(--radius-md); padding: 10px 28px; cursor: pointer; font-size: 1rem; font-weight: 600; transition: background 0.2s, transform 0.2s; }
+        .encourage-btn:hover { background: var(--color-gold-deep); transform: scale(1.05); }
+
+        @media (max-width: 768px) {
+            .review-grid { grid-template-columns: 1fr; }
+            .grai-grid { grid-template-columns: 1fr; }
+            .review-container { padding: 0 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="review"></sidebar>
+        <main class="main-content">
+            <header class="page-header">
+                <h2>每日回顾</h2>
+            </header>
+            <section class="page-content">
+                <div class="review-container">
+
+                    <!-- 日期导航 -->
+                    <div class="date-nav">
+                        <button class="date-nav-btn" @click="changeDate(-1)">‹</button>
+                        <div class="date-display">{{ formatDateDisplay(currentDate) }}</div>
+                        <button class="date-today-btn" @click="goToday" v-if="!isToday">回到今天</button>
+                        <button class="date-nav-btn" @click="changeDate(1)">›</button>
+                        <input type="date" class="date-input" v-model="dateInput" @change="onDateInput">
+                    </div>
+
+                    <!-- 情绪选择 -->
+                    <div class="emotion-section">
+                        <div class="emotion-title">今天的心情是？</div>
+                        <div class="emotion-options">
+                            <div v-for="e in emotions" :key="e.value" class="emotion-wrapper" style="text-align: center;">
+                                <button :class="['emotion-btn', { 'selected': reviewForm.emotion === e.value }]" @click="reviewForm.emotion = e.value" :title="e.label">
+                                    {{ e.icon }}
+                                </button>
+                                <div class="emotion-label">{{ e.label }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 四栏复盘 -->
+                    <div class="review-grid">
+                        <div class="review-card card-did">
+                            <div class="review-card-header">
+                                <div class="review-card-icon">✅</div>
+                                <div class="review-card-title">DID — 做了什么</div>
+                            </div>
+                            <div class="review-card-hint">今天完成了哪些事情？（任务、习惯、时间轴事件）</div>
+                            <textarea class="review-textarea" v-model="reviewForm.did" placeholder="例如：&#10;- 完成了论文初稿&#10;- 阅读了30页《习惯的力量》&#10;- 打了30分钟羽毛球"></textarea>
+                        </div>
+
+                        <div class="review-card card-good">
+                            <div class="review-card-header">
+                                <div class="review-card-icon">🌟</div>
+                                <div class="review-card-title">GOOD — 做得好的</div>
+                            </div>
+                            <div class="review-card-hint">哪些事情值得肯定？（效率、决策、情绪）</div>
+                            <textarea class="review-textarea" v-model="reviewForm.good" placeholder="例如：&#10;- 早起后没有刷手机，直接开始工作&#10;- 拒绝了无关的会议邀请&#10;- 情绪稳定，没有焦虑"></textarea>
+                        </div>
+
+                        <div class="review-card card-bad">
+                            <div class="review-card-header">
+                                <div class="review-card-icon">⚠️</div>
+                                <div class="review-card-title">BAD — 待改进的</div>
+                            </div>
+                            <div class="review-card-hint">哪些地方可以做得更好？（拖延、分心、决策）</div>
+                            <textarea class="review-textarea" v-model="reviewForm.bad" placeholder="例如：&#10;- 下午刷短视频1小时，原计划只刷10分钟&#10;- 晚上吃了太多零食&#10;- 没有给论文留出修改时间"></textarea>
+                        </div>
+
+                        <div class="review-card card-thoughts">
+                            <div class="review-card-header">
+                                <div class="review-card-icon">💭</div>
+                                <div class="review-card-title">THOUGHTS — 灵感/思考</div>
+                            </div>
+                            <div class="review-card-hint">闪现的想法、读到的金句、新的领悟</div>
+                            <textarea class="review-textarea" v-model="reviewForm.thoughts" placeholder="例如：&#10;- 时间管理的本质不是管理时间，而是管理注意力&#10;- 及川彻的台词很适合做鼓励语&#10;- 发现自己在安静环境下效率翻倍"></textarea>
+                        </div>
+
+                        <div class="review-card card-diary full-width">
+                            <div class="review-card-header">
+                                <div class="review-card-icon">📖</div>
+                                <div class="review-card-title">Diary — 随笔/日记</div>
+                            </div>
+                            <div class="review-card-hint">自由书写，任何想说的话（不分析，只记录）</div>
+                            <textarea class="review-textarea" v-model="reviewForm.diary" style="min-height: 160px;" placeholder="今天发生了什么？遇到了谁？感受到了什么？&#10;&#10;不用结构化，像和朋友聊天一样写下来..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- GRAI 分析面板 -->
+                    <div class="grai-section">
+                        <div class="grai-header">
+                            <div class="grai-title">🔍 GRAI 分析</div>
+                            <div class="grai-badge">Goal · Result · Analysis · Insight</div>
+                        </div>
+                        <div class="grai-grid">
+                            <div class="grai-item goal">
+                                <div class="grai-item-label">Goal 目标</div>
+                                <div class="grai-item-content">
+                                    <span v-if="graiData.goal" class="grai-item-placeholder">{{ graiData.goal }}</span>
+                                    <span v-else class="grai-item-placeholder">今天的主要目标是什么？（从 DID 中提取）</span>
+                                </div>
+                            </div>
+                            <div class="grai-item result">
+                                <div class="grai-item-label">Result 结果</div>
+                                <div class="grai-item-content">
+                                    <span v-if="graiData.result" class="grai-item-placeholder">{{ graiData.result }}</span>
+                                    <span v-else class="grai-item-placeholder">目标完成了多少？量化结果（从 DID 中统计）</span>
+                                </div>
+                            </div>
+                            <div class="grai-item analysis">
+                                <div class="grai-item-label">Analysis 分析</div>
+                                <div class="grai-item-content">
+                                    <span v-if="graiData.analysis" class="grai-item-placeholder">{{ graiData.analysis }}</span>
+                                    <span v-else class="grai-item-placeholder">为什么成功/失败？（对比 GOOD 和 BAD）</span>
+                                </div>
+                            </div>
+                            <div class="grai-item insight">
+                                <div class="grai-item-label">Insight 洞察</div>
+                                <div class="grai-item-content">
+                                    <span v-if="graiData.insight" class="grai-item-placeholder">{{ graiData.insight }}</span>
+                                    <span v-else class="grai-item-placeholder">学到了什么？下次怎么做？（从 THOUGHTS 中提取）</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="grai-analyze-btn" @click="runGRAI" :disabled="!hasContent">
+                            {{ graiData.insight ? '重新生成 GRAI 分析' : '✨ 生成 GRAI 分析（AI）' }}
+                        </button>
+                    </div>
+
+                    <!-- 保存栏 -->
+                    <div class="save-bar">
+                        <div :class="['save-status', { 'saved': saved }]">
+                            {{ saved ? '✓ 已保存' : '有未保存的更改' }}
+                        </div>
+                        <button class="save-btn" @click="saveReview">保存回顾</button>
+                    </div>
+
+                    <!-- 历史回顾列表 -->
+                    <div class="history-sidebar" v-if="history.length > 0">
+                        <div class="history-title">📚 历史回顾</div>
+                        <div v-for="item in history.slice().reverse()" :key="item.date"
+                             :class="['history-item', { 'active': item.date === currentDate }]"
+                             @click="loadDate(item.date)">
+                            <span class="history-date">{{ item.date.slice(5) }}</span>
+                            <span class="history-emotion">{{ item.emotion ? emotionMap[item.emotion] : '◯' }}</span>
+                            <span class="history-snippet">{{ item.snippet || '无记录' }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- 角色激励弹窗 -->
+        <div v-if="showEncourage" class="modal-overlay" @click.self="closeEncourage">
+            <div class="encourage-modal">
+                <div v-if="encourageChar.avatar" class="encourage-avatar">
+                    <img :src="encourageChar.avatar" class="encourage-avatar" alt="">
+                </div>
+                <div v-else class="encourage-avatar-placeholder">{{ encourageChar.name ? encourageChar.name.charAt(0) : '?' }}</div>
+                <div class="encourage-name">{{ encourageChar.name }}</div>
+                <div class="encourage-message">{{ encourageMessage }}</div>
+                <button class="encourage-btn" @click="closeEncourage">收到！</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊', ariaLabel: '仪表盘' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰', ariaLabel: '时间轴' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋', ariaLabel: '任务' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅', ariaLabel: '习惯' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝', ariaLabel: '每日回顾' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓', ariaLabel: '学习日记' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤', ariaLabel: '角色库' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️', ariaLabel: '设置' }
+                ]);
+                const activeNavItems = computed(() => navItems.value.map(item => ({ ...item, active: item.id === props.activePage })));
+                const today = computed(() => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+                return { sidebarCollapsed, activeNavItems, today };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav" aria-label="主导航">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                    <div class="sidebar-timeline" v-show="!sidebarCollapsed">
+                        <div class="timeline-header"><h3>今日时间轴</h3><span class="timeline-date">{{ today }}</span></div>
+                        <div class="timeline-preview"><p class="placeholder">暂无记录</p><p class="hint">前往时间轴页面添加</p></div>
+                    </div>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const currentDate = ref(LifeOS.Utils.formatDate());
+                const dateInput = ref(currentDate.value);
+                const saved = ref(true);
+                const history = ref([]);
+                const showEncourage = ref(false);
+                const encourageChar = ref({});
+                const encourageMessage = ref('');
+                const graiData = ref({ goal: '', result: '', analysis: '', insight: '' });
+
+                const emotions = [
+                    { value: 'joy', icon: '😄', label: '开心' },
+                    { value: 'calm', icon: '😌', label: '平静' },
+                    { value: 'tired', icon: '😴', label: '疲惫' },
+                    { value: 'anxious', icon: '😰', label: '焦虑' },
+                    { value: 'sad', icon: '😢', label: '低落' },
+                    { value: 'angry', icon: '😠', label: '生气' },
+                    { value: 'excited', icon: '🤩', label: '兴奋' },
+                    { value: 'grateful', icon: '🥰', label: '感恩' }
+                ];
+                const emotionMap = { joy: '😄', calm: '😌', tired: '😴', anxious: '😰', sad: '😢', angry: '😠', excited: '🤩', grateful: '🥰' };
+
+                const reviewForm = ref({
+                    did: '', good: '', bad: '', thoughts: '', diary: '', emotion: '',
+                    emotionReason: '', aiAnalysis: null
+                });
+
+                const isToday = computed(() => currentDate.value === LifeOS.Utils.formatDate());
+                const hasContent = computed(() => reviewForm.value.did || reviewForm.value.good || reviewForm.value.bad || reviewForm.value.thoughts || reviewForm.value.diary);
+
+                // 加载指定日期的回顾
+                const loadDate = async (date) => {
+                    currentDate.value = date;
+                    dateInput.value = date;
+                    const data = await LifeOS.Review.get(date);
+                    if (data) {
+                        reviewForm.value = {
+                            did: data.did || '', good: data.good || '', bad: data.bad || '',
+                            thoughts: data.thoughts || '', diary: data.diary || '', emotion: data.emotion || '',
+                            emotionReason: data.emotionReason || '', aiAnalysis: data.aiAnalysis || null
+                        };
+                        graiData.value = data.aiAnalysis || { goal: '', result: '', analysis: '', insight: '' };
+                    } else {
+                        reviewForm.value = { did: '', good: '', bad: '', thoughts: '', diary: '', emotion: '', emotionReason: '', aiAnalysis: null };
+                        graiData.value = { goal: '', result: '', analysis: '', insight: '' };
+                    }
+                    saved.value = true;
+                };
+
+                // 加载历史列表
+                const loadHistory = async () => {
+                    const all = await LifeOS.Review.getAll();
+                    history.value = all.map(r => ({
+                        date: r.date, emotion: r.emotion,
+                        snippet: (r.did || r.good || r.thoughts || r.diary || '').slice(0, 30)
+                    })).sort((a, b) => a.date.localeCompare(b.date));
+                };
+
+                const saveReview = async () => {
+                    try {
+                        // 深拷贝去除 Vue Proxy，确保 IndexedDB 可以正确序列化
+                        const formData = JSON.parse(JSON.stringify(reviewForm.value));
+                        const grai = JSON.parse(JSON.stringify(graiData.value));
+                        await LifeOS.Review.save(currentDate.value, {
+                            ...formData,
+                            aiAnalysis: grai
+                        });
+                        saved.value = true;
+                        await loadHistory();
+                        showEncourageDialog();
+                    } catch (err) {
+                        console.error('保存回顾失败:', err);
+                        alert('保存失败: ' + (err.message || '未知错误'));
+                    }
+                };
+
+                // 角色激励
+                const showEncourageDialog = async () => {
+                    const chars = await LifeOS.Character.getAll();
+                    if (!chars.length) return;
+                    const sorted = chars.filter(c => c.priority >= 50).sort(() => Math.random() - 0.5);
+                    const char = sorted[0] || chars[0];
+                    encourageChar.value = char;
+                    if (char.exampleLines && char.exampleLines.goodNight && char.exampleLines.goodNight.length > 0) {
+                        const lines = char.exampleLines.goodNight;
+                        encourageMessage.value = lines[Math.floor(Math.random() * lines.length)];
+                    } else {
+                        encourageMessage.value = '今天的回顾写得很认真呢！好好休息，明天也要加油哦~';
+                    }
+                    showEncourage.value = true;
+                };
+                const closeEncourage = () => { showEncourage.value = false; encourageChar.value = {}; };
+
+                // GRAI 分析（增强版：基于四栏 + 今日实际数据）
+                const runGRAI = async () => {
+                    const did = reviewForm.value.did.trim();
+                    const good = reviewForm.value.good.trim();
+                    const bad = reviewForm.value.bad.trim();
+                    const thoughts = reviewForm.value.thoughts.trim();
+                    const emotion = reviewForm.value.emotion;
+                    const emotionReason = reviewForm.value.emotionReason;
+
+                    // 拉取今日实际数据
+                    const dateStr = currentDate.value;
+                    let tasks = [], events = [], habits = [], habitRecords = [];
+                    try {
+                        tasks = await LifeOS.Task.getByDate(dateStr);
+                        events = await LifeOS.Timeline.getByDate(dateStr);
+                        habits = await LifeOS.Habit.getAll();
+                        habitRecords = await LifeOS.Database.getAll('habitRecords');
+                    } catch (e) { /* 静默失败，基于已有数据 */ }
+
+                    const completedTasks = tasks.filter(t => t.completed).length;
+                    const totalTasks = tasks.length;
+                    const taskRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+                    const plannedEvents = events.filter(e => e.type === 'planned').length;
+                    const actualEvents = events.filter(e => e.type === 'actual').length;
+
+                    const completedHabits = habits.filter(h => {
+                        return habitRecords.some(r => r.habitId === h.id && r.date === dateStr && r.completed);
+                    }).length;
+                    const totalHabits = habits.length;
+                    const habitRate = totalHabits ? Math.round((completedHabits / totalHabits) * 100) : 0;
+
+                    // 时间分配统计
+                    const catMinutes = {};
+                    for (const e of events) {
+                        const [sh, sm] = (e.startTime || '00:00').split(':').map(Number);
+                        const [eh, em] = (e.endTime || '00:00').split(':').map(Number);
+                        let mins = (eh * 60 + em) - (sh * 60 + sm);
+                        if (mins < 0) mins += 24 * 60;
+                        catMinutes[e.category] = (catMinutes[e.category] || 0) + mins;
+                    }
+                    const totalMinutes = Object.values(catMinutes).reduce((a, b) => a + b, 0);
+                    const topCat = Object.entries(catMinutes).sort((a, b) => b[1] - a[1])[0];
+
+                    // Goal：综合目标描述
+                    let goal = '';
+                    if (did) {
+                        goal = did.split('\n')[0].replace(/^[-\s*]+/, '').slice(0, 60);
+                    } else if (totalTasks > 0) {
+                        goal = `今日计划完成 ${totalTasks} 项任务，已完成 ${completedTasks} 项`;
+                    } else if (totalHabits > 0) {
+                        goal = `坚持 ${totalHabits} 个习惯打卡，已完成 ${completedHabits} 项`;
+                    } else {
+                        goal = '今日暂无明确目标记录，建议设定具体可量化的目标';
+                    }
+
+                    // Result：量化结果
+                    let result = '';
+                    const parts = [];
+                    if (totalTasks > 0) parts.push(`任务完成率 ${taskRate}% (${completedTasks}/${totalTasks})`);
+                    if (totalHabits > 0) parts.push(`习惯打卡率 ${habitRate}% (${completedHabits}/${totalHabits})`);
+                    if (plannedEvents > 0 || actualEvents > 0) parts.push(`时间轴 ${actualEvents}/${plannedEvents} (实际/计划)`);
+                    if (totalMinutes > 0) {
+                        const hours = (totalMinutes / 60).toFixed(1);
+                        parts.push(`记录时长 ${hours}h`);
+                    }
+                    if (parts.length) {
+                        result = parts.join(' · ');
+                    } else if (did) {
+                        result = `记录了 ${did.split('\n').filter(l => l.trim()).length} 项行动`;
+                    } else {
+                        result = '今日暂无数据记录，建议开始使用时间轴和任务模块追踪';
+                    }
+
+                    // Analysis：智能分析 + 建议
+                    let analysis = '';
+                    const goodCount = good ? good.split('\n').filter(l => l.trim()).length : 0;
+                    const badCount = bad ? bad.split('\n').filter(l => l.trim()).length : 0;
+
+                    // 基于数据驱动的分析
+                    if (taskRate < 50 && totalTasks > 0) {
+                        analysis = '任务完成率偏低，可能存在目标设定过多或优先级不清的问题。';
+                    } else if (taskRate >= 80 && totalTasks > 0) {
+                        analysis = '任务完成率高，执行力强！注意保持节奏，避免过度透支。';
+                    } else if (totalTasks === 0 && totalHabits > 0) {
+                        analysis = '今日未安排任务，以习惯驱动为主。适合休息日或轻量日程。';
+                    }
+
+                    if (habitRate < 50 && totalHabits > 0) {
+                        analysis += '习惯打卡率较低，建议降低初始难度或设置提醒。';
+                    } else if (habitRate >= 80 && totalHabits > 0) {
+                        analysis += '习惯系统运转良好，连续打卡正向循环已建立。';
+                    }
+
+                    if (actualEvents < plannedEvents && plannedEvents > 0) {
+                        analysis += ' 实际安排少于计划，存在计划外变动或拖延。';
+                    }
+
+                    if (topCat && totalMinutes > 0) {
+                        const catHours = (topCat[1] / 60).toFixed(1);
+                        const catPercent = Math.round((topCat[1] / totalMinutes) * 100);
+                        analysis += ` 时间主要投入「${topCat[0]}」(${catHours}h/${catPercent}%)`;
+                    }
+
+                    // 基于文本的四栏分析
+                    if (goodCount > 0 && badCount > 0) {
+                        analysis += ` 自我复盘：优势 ${goodCount} 项 / 待改进 ${badCount} 项。`;
+                    } else if (goodCount > 0) {
+                        analysis += ' 积极复盘，善于发现自身亮点。';
+                    } else if (badCount > 0) {
+                        analysis += ' 勇于直面不足，这是改进的第一步。';
+                    }
+
+                    if (emotion === 'anxious' || emotion === 'tired') {
+                        analysis += ' 情绪状态偏负面，注意调整节奏和休息。';
+                    } else if (emotion === 'joy' || emotion === 'excited' || emotion === 'grateful') {
+                        analysis += ' 情绪状态积极，适合推进有挑战性的任务。';
+                    }
+
+                    if (!analysis) {
+                        analysis = '尚未填写复盘内容，建议完成 DID/GOOD/BAD 后再生成分析。';
+                    }
+
+                    // Insight：洞察 + 行动建议
+                    let insight = '';
+                    if (thoughts) {
+                        insight = thoughts.split('\n')[0].slice(0, 80);
+                    }
+
+                    const suggestions = [];
+                    if (taskRate < 50 && totalTasks > 3) {
+                        suggestions.push('建议减少明日任务量至 3 项以内，聚焦优先级');
+                    }
+                    if (habitRate < 50 && totalHabits > 0) {
+                        suggestions.push('尝试「习惯堆叠」：将新习惯绑定到已有习惯上');
+                    }
+                    if (badCount > goodCount && badCount > 0) {
+                        suggestions.push('负面情绪偏多，建议睡前做 5 分钟呼吸冥想');
+                    }
+                    if (totalMinutes > 0 && totalMinutes < 120) {
+                        suggestions.push('时间记录较少，建议开启番茄钟追踪专注时间');
+                    }
+                    if (emotionReason && emotionReason.includes('加班')) {
+                        suggestions.push('工作强度大，建议预留缓冲时间，避免连续高压');
+                    }
+                    if (suggestions.length > 0) {
+                        insight = (insight ? insight + ' · ' : '') + suggestions.join(' · ');
+                    } else if (!insight) {
+                        insight = '暂无洞察记录，建议每天写下 1 条核心思考';
+                    }
+
+                    graiData.value = { goal, result, analysis, insight };
+                    saved.value = false;
+                };
+
+                // 日期导航
+                const changeDate = (delta) => {
+                    const d = new Date(currentDate.value);
+                    d.setDate(d.getDate() + delta);
+                    loadDate(LifeOS.Utils.formatDate(d));
+                };
+                const goToday = () => loadDate(LifeOS.Utils.formatDate());
+                const onDateInput = () => { if (dateInput.value) loadDate(dateInput.value); };
+                const formatDateDisplay = (dateStr) => {
+                    const d = new Date(dateStr);
+                    const weekdays = ['周日','周一','周二','周三','周四','周五','周六'];
+                    return `${d.getMonth()+1}月${d.getDate()}日 ${weekdays[d.getDay()]}`;
+                };
+
+                // 监听表单变化，标记未保存
+                watch(() => JSON.stringify(reviewForm.value), () => { saved.value = false; });
+                watch(() => JSON.stringify(graiData.value), () => { saved.value = false; });
+
+                onMounted(async () => {
+                    await loadDate(currentDate.value);
+                    await loadHistory();
+                });
+
+                return {
+                    currentDate, dateInput, isToday, saved, history, showEncourage, encourageChar, encourageMessage,
+                    emotions, emotionMap, reviewForm, graiData, hasContent,
+                    loadDate, saveReview, showEncourageDialog, closeEncourage, runGRAI,
+                    changeDate, goToday, onDateInput, formatDateDisplay
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

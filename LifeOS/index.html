@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 仪表盘</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+    <style>
+        /* ===== Dashboard 专属样式 ===== */
+        .dashboard-header { display: flex; justify-content: space-between; align-items: center; padding: 0 0 16px; border-bottom: 1px solid var(--border-light); margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
+        .dashboard-header h2 { font-size: 1.5rem; font-weight: 700; margin: 0; }
+        .date-display { font-size: 1rem; color: var(--text-secondary); font-family: var(--font-sans); }
+
+        /* 统计卡片 */
+        .dashboard-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 24px; }
+        .stat-card {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 18px 14px; text-align: center; cursor: pointer;
+            box-shadow: var(--shadow-sm); transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            position: relative; overflow: hidden;
+        }
+        .stat-card::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; opacity: 0.6;
+        }
+        .stat-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+        .stat-card.completion::before { background: var(--color-mint); }
+        .stat-card.streak::before { background: var(--color-urgent); }
+        .stat-card.tasks::before { background: var(--color-water-deep); }
+        .stat-card.xp::before { background: var(--color-gold-deep); }
+        .stat-card.mood::before { background: var(--color-urgent); }
+        .stat-icon { font-size: 1.75rem; margin-bottom: 8px; }
+        .stat-value { font-size: 1.5rem; font-weight: 700; font-family: var(--font-sans); color: var(--text-primary); }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+
+        /* 快速操作 */
+        .quick-actions { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+        .quick-action-btn {
+            padding: 10px 20px; border-radius: var(--radius-lg); border: 1px solid var(--border-light);
+            background: var(--bg-card); backdrop-filter: blur(12px); cursor: pointer; font-size: 0.875rem;
+            font-family: var(--font-sans); display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s; box-shadow: var(--shadow-sm); color: var(--text-primary);
+        }
+        .quick-action-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--color-water-light); }
+        .quick-action-btn.primary { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+        .quick-action-btn.primary:hover { background: var(--color-slytherin-green); border-color: var(--color-slytherin-green); }
+
+        /* 两栏布局 */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
+
+        /* 左栏：时间轴预览 */
+        .timeline-preview-panel {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 20px; box-shadow: var(--shadow-sm);
+        }
+        .panel-title { font-size: 1rem; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+        .timeline-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+        .timeline-item {
+            display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px;
+            border-radius: var(--radius-md); background: rgba(255,255,255,0.5); border: 1px solid var(--border-light);
+            transition: background 0.15s; cursor: pointer;
+        }
+        .timeline-item:hover { background: var(--bg-hover); }
+        .timeline-time { font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-sans); min-width: 48px; font-weight: 600; }
+        .timeline-content { flex: 1; min-width: 0; }
+        .timeline-title { font-size: 0.875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .timeline-tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; display: inline-block; margin-top: 4px; font-family: var(--font-sans); }
+        .timeline-empty { text-align: center; padding: 32px 16px; color: var(--text-muted); }
+        .timeline-empty .icon { font-size: 2rem; margin-bottom: 8px; opacity: 0.5; }
+
+        /* 右栏：日历 */
+        .calendar-panel {
+            background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); padding: 20px; box-shadow: var(--shadow-sm);
+        }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .calendar-title { font-size: 1rem; font-weight: 600; }
+        .calendar-nav { display: flex; gap: 6px; }
+        .calendar-nav-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; transition: background 0.15s; }
+        .calendar-nav-btn:hover { background: var(--bg-hover); }
+
+        .weekday-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; text-align: center; font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-sans); }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .cal-day {
+            aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            font-size: 0.75rem; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; position: relative;
+            border: 1px solid var(--border-light); background: rgba(255,255,255,0.5); padding: 2px;
+        }
+        .cal-day:hover { transform: scale(1.1); z-index: 2; box-shadow: var(--shadow-sm); }
+        .cal-day.empty { background: transparent; border: none; cursor: default; pointer-events: none; }
+        .cal-day.empty:hover { transform: none; box-shadow: none; }
+        .cal-day.today { border: 2px solid var(--color-water-deep); background: var(--color-water-light); }
+        .cal-day .day-num { font-weight: 600; font-family: var(--font-sans); font-size: 0.8rem; }
+        .cal-day .day-mood { font-size: 0.9rem; margin-top: 1px; }
+        .cal-day .day-dots { display: flex; gap: 2px; margin-top: 2px; }
+        .day-dot { width: 4px; height: 4px; border-radius: 50%; }
+        .cal-day .day-rate { font-size: 0.6rem; color: var(--text-muted); font-family: var(--font-sans); margin-top: 1px; }
+
+        .cal-legend { display: flex; align-items: center; gap: 6px; margin-top: 12px; justify-content: flex-end; font-size: 0.7rem; color: var(--text-muted); }
+        .legend-item { display: flex; align-items: center; gap: 3px; }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* 加载状态 */
+        .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px; color: var(--text-muted); }
+        .loading-spinner { width: 40px; height: 40px; border: 3px solid var(--border-light); border-top-color: var(--color-water-deep); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* 导入弹窗 */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 24px; width: 90%; max-width: 420px; box-shadow: var(--shadow-lg); }
+        .modal h3 { margin-bottom: 8px; }
+        .modal-desc { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 16px; }
+        .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+        .btn-secondary { padding: 10px 20px; border-radius: var(--radius-md); border: none; cursor: pointer; font-size: 0.875rem; font-family: inherit; background: var(--bg-hover); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--border-light); }
+        input[type="file"] { padding: 8px; border: 1px solid var(--border-light); border-radius: var(--radius-md); width: 100%; font-size: 0.875rem; }
+
+        @media (max-width: 768px) {
+            .dashboard-cards { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .stat-card { padding: 12px 8px; }
+            .stat-value { font-size: 1.25rem; }
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .quick-actions { gap: 8px; }
+            .quick-action-btn { padding: 8px 14px; font-size: 0.8rem; }
+        }
+        @media (max-width: 480px) {
+            .dashboard-cards { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="dashboard"></sidebar>
+        <main class="main-content">
+            <header class="dashboard-header">
+                <h2>今日概览</h2>
+                <div class="date-display">{{ todayDate }}</div>
+            </header>
+
+            <div v-if="loading" class="loading-state">
+                <div class="loading-spinner"></div>
+                <p>正在聚合数据...</p>
+            </div>
+
+            <template v-else>
+                <!-- 统计卡片 -->
+                <section class="dashboard-cards">
+                    <div class="stat-card completion" @click="goTo('tasks.html')">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-value">{{ completionRate }}%</div>
+                        <div class="stat-label">今日完成率</div>
+                    </div>
+                    <div class="stat-card streak" @click="goTo('habits.html')">
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-value">{{ maxStreak }} 天</div>
+                        <div class="stat-label">最长连续</div>
+                    </div>
+                    <div class="stat-card tasks" @click="goTo('tasks.html')">
+                        <div class="stat-icon">📋</div>
+                        <div class="stat-value">{{ pendingTasks }}</div>
+                        <div class="stat-label">待办任务</div>
+                    </div>
+                    <div class="stat-card xp" @click="goTo('learning.html')">
+                        <div class="stat-icon">⭐</div>
+                        <div class="stat-value">{{ totalXP }}</div>
+                        <div class="stat-label">总学习 XP</div>
+                    </div>
+                    <div class="stat-card mood" @click="goTo('review.html')">
+                        <div class="stat-icon">{{ moodIcon }}</div>
+                        <div class="stat-value">{{ moodText }}</div>
+                        <div class="stat-label">今日情绪</div>
+                    </div>
+                </section>
+
+                <!-- 快速操作 -->
+                <section class="quick-actions">
+                    <button class="quick-action-btn primary" @click="goTo('tasks.html')">
+                        <span>➕</span> 添加任务
+                    </button>
+                    <button class="quick-action-btn" @click="goTo('habits.html')">
+                        <span>✅</span> 记录习惯
+                    </button>
+                    <button class="quick-action-btn" @click="goTo('timeline.html')">
+                        <span>⏱️</span> 开始计时
+                    </button>
+                    <button class="quick-action-btn" @click="goTo('review.html')">
+                        <span>📝</span> 写复盘
+                    </button>
+                    <button class="quick-action-btn" @click="exportData">
+                        <span>💾</span> 导出备份
+                    </button>
+                    <button class="quick-action-btn" @click="showImport = true">
+                        <span>📥</span> 导入数据
+                    </button>
+                </section>
+
+                <!-- 两栏：时间轴预览 + 日历 -->
+                <div class="dashboard-grid">
+                    <!-- 左：时间轴预览 -->
+                    <div class="timeline-preview-panel">
+                        <div class="panel-title">⏰ 今日时间轴</div>
+                        <div v-if="todayEvents.length" class="timeline-list">
+                            <div v-for="evt in sortedEvents" :key="evt.id" class="timeline-item" @click="goTo('timeline.html')">
+                                <div class="timeline-time">{{ evt.startTime }}</div>
+                                <div class="timeline-content">
+                                    <div class="timeline-title">{{ evt.title }}</div>
+                                    <span v-if="evt.type === 'actual'" class="timeline-tag" style="background: rgba(52, 211, 153, 0.2); color: #059669;">✓ 实际</span>
+                                    <span v-else class="timeline-tag" style="background: rgba(125, 211, 252, 0.2); color: #0284c7;">○ 预定</span>
+                                    <span v-if="evt.category" class="timeline-tag" :style="{ background: getCategoryColor(evt.category) + '20', color: getCategoryColor(evt.category) }">{{ evt.category }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="timeline-empty">
+                            <div class="icon">📅</div>
+                            <p>今日还没有时间轴事件</p>
+                            <p style="font-size: 0.75rem; margin-top: 4px;">前往时间轴页面添加</p>
+                        </div>
+                    </div>
+
+                    <!-- 右：日历聚合视图 -->
+                    <div class="calendar-panel">
+                        <div class="calendar-header">
+                            <div class="calendar-title">📅 {{ currentYear }}年{{ currentMonth + 1 }}月</div>
+                            <div class="calendar-nav">
+                                <button class="calendar-nav-btn" @click="prevMonth">‹</button>
+                                <button class="calendar-nav-btn" @click="goThisMonth">今</button>
+                                <button class="calendar-nav-btn" @click="nextMonth">›</button>
+                            </div>
+                        </div>
+                        <div class="weekday-labels">
+                            <span v-for="d in weekdays" :key="d">{{ d }}</span>
+                        </div>
+                        <div class="calendar-grid">
+                            <div v-for="(day, idx) in calendarDays" :key="idx"
+                                 :class="['cal-day', day.type, { 'today': day.isToday }]"
+                                 @click="day.date && goToDate(day.date)">
+                                <span v-if="day.day" class="day-num">{{ day.day }}</span>
+                                <span v-if="day.emotion" class="day-mood">{{ day.emotion }}</span>
+                                <div v-if="day.habitCount" class="day-dots">
+                                    <span v-for="i in Math.min(day.habitCount, 4)" :key="i" class="day-dot" style="background: var(--color-mint);"></span>
+                                </div>
+                                <span v-if="day.taskRate != null" class="day-rate">{{ day.taskRate }}%</span>
+                            </div>
+                        </div>
+                        <div class="cal-legend">
+                            <span class="legend-item"><span class="legend-dot" style="background: var(--color-mint);"></span> 习惯</span>
+                            <span class="legend-item">😄 情绪</span>
+                            <span class="legend-item"><span class="legend-dot" style="background: var(--color-water-deep);"></span> 今日</span>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </main>
+
+        <!-- 导入弹窗 -->
+        <div v-if="showImport" class="modal-overlay" @click.self="showImport = false">
+            <div class="modal">
+                <h3>导入数据</h3>
+                <p class="modal-desc">选择之前导出的 JSON 备份文件，数据将合并到现有数据库中。</p>
+                <input type="file" accept=".json" @change="handleImport">
+                <div class="modal-actions">
+                    <button class="btn-secondary" @click="showImport = false">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊', ariaLabel: '仪表盘' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰', ariaLabel: '时间轴' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋', ariaLabel: '任务' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅', ariaLabel: '习惯' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝', ariaLabel: '每日回顾' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓', ariaLabel: '学习日记' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤', ariaLabel: '角色库' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️', ariaLabel: '设置' }
+                ]);
+                const activeNavItems = computed(() => navItems.value.map(item => ({ ...item, active: item.id === props.activePage })));
+                const today = computed(() => new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+                return { sidebarCollapsed, activeNavItems, today };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav" aria-label="主导航">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                    <div class="sidebar-timeline" v-show="!sidebarCollapsed">
+                        <div class="timeline-header"><h3>今日时间轴</h3><span class="timeline-date">{{ today }}</span></div>
+                        <div class="timeline-preview"><p class="placeholder">暂无记录</p><p class="hint">前往时间轴页面添加</p></div>
+                    </div>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const loading = ref(true);
+                const showImport = ref(false);
+                const today = ref(LifeOS.Utils.formatDate());
+                const currentYear = ref(new Date().getFullYear());
+                const currentMonth = ref(new Date().getMonth());
+                const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+
+                // 数据状态
+                const completionRate = ref(0);
+                const maxStreak = ref(0);
+                const pendingTasks = ref(0);
+                const totalXP = ref(0);
+                const moodIcon = ref('🌤️');
+                const moodText = ref('—');
+                const todayEvents = ref([]);
+                const calendarData = ref({}); // { '2024-01-15': { emotion, habitCount, completedTasks, totalTasks } }
+
+                const emotionMap = { joy: '😄', calm: '😌', tired: '😴', anxious: '😰', sad: '😢', angry: '😠', excited: '🤩', grateful: '🥰' };
+                const emotionText = { joy: '开心', calm: '平静', tired: '疲惫', anxious: '焦虑', sad: '低落', angry: '生气', excited: '兴奋', grateful: '感恩' };
+
+                const todayDate = computed(() => {
+                    return new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+                });
+
+                const sortedEvents = computed(() => {
+                    return [...todayEvents.value].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                });
+
+                // 加载所有数据
+                const loadData = async () => {
+                    await LifeOS.Database.init();
+                    const dateStr = today.value;
+
+                    // 1. 任务数据
+                    const allTasks = await LifeOS.Task.getAll();
+                    const todayTasks = allTasks.filter(t => t.date === dateStr);
+                    const completed = todayTasks.filter(t => t.completed).length;
+                    completionRate.value = todayTasks.length ? Math.round((completed / todayTasks.length) * 100) : 0;
+                    pendingTasks.value = todayTasks.filter(t => !t.completed).length;
+
+                    // 2. 习惯连续打卡
+                    const habits = await LifeOS.Habit.getAll();
+                    let streak = 0;
+                    for (const h of habits) {
+                        const s = await LifeOS.Habit.getStreak(h.id);
+                        if (s > streak) streak = s;
+                    }
+                    maxStreak.value = streak;
+
+                    // 3. 学习 XP
+                    const skills = await LifeOS.Skill.getAll();
+                    totalXP.value = skills.reduce((sum, s) => sum + s.xp + (s.level - 1) * s.xpToNext, 0);
+
+                    // 4. 今日情绪
+                    const review = await LifeOS.Review.get(dateStr);
+                    if (review && review.emotion) {
+                        moodIcon.value = emotionMap[review.emotion] || '🌤️';
+                        moodText.value = emotionText[review.emotion] || review.emotion;
+                    } else {
+                        moodIcon.value = '🌤️';
+                        moodText.value = '—';
+                    }
+
+                    // 5. 今日时间轴
+                    todayEvents.value = await LifeOS.Timeline.getByDate(dateStr);
+
+                    // 6. 日历数据（当前月）
+                    await loadCalendarData();
+
+                    loading.value = false;
+                };
+
+                // 加载日历数据
+                const loadCalendarData = async () => {
+                    const yearMonth = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`;
+                    const [allReviews, allRecords, allTasks] = await Promise.all([
+                        LifeOS.Review.getAll(),
+                        LifeOS.Database.getAll('habitRecords'),
+                        LifeOS.Task.getAll()
+                    ]);
+
+                    const data = {};
+                    // 情绪
+                    for (const r of allReviews) {
+                        if (r.date && r.date.startsWith(yearMonth)) {
+                            data[r.date] = data[r.date] || {};
+                            data[r.date].emotion = r.emotion;
+                        }
+                    }
+                    // 习惯打卡
+                    for (const r of allRecords) {
+                        if (r.date && r.date.startsWith(yearMonth) && r.completed) {
+                            data[r.date] = data[r.date] || {};
+                            data[r.date].habitCount = (data[r.date].habitCount || 0) + 1;
+                        }
+                    }
+                    // 任务完成率
+                    for (const t of allTasks) {
+                        if (t.date && t.date.startsWith(yearMonth)) {
+                            data[t.date] = data[t.date] || {};
+                            data[t.date].totalTasks = (data[t.date].totalTasks || 0) + 1;
+                            if (t.completed) data[t.date].completedTasks = (data[t.date].completedTasks || 0) + 1;
+                        }
+                    }
+                    calendarData.value = data;
+                };
+
+                // 日历网格
+                const calendarDays = computed(() => {
+                    const days = [];
+                    const firstDay = new Date(currentYear.value, currentMonth.value, 1);
+                    const lastDay = new Date(currentYear.value, currentMonth.value + 1, 0);
+                    const startOffset = firstDay.getDay();
+                    for (let i = 0; i < startOffset; i++) days.push({ type: 'empty' });
+                    for (let d = 1; d <= lastDay.getDate(); d++) {
+                        const dateStr = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const data = calendarData.value[dateStr] || {};
+                        const taskRate = data.totalTasks ? Math.round((data.completedTasks / data.totalTasks) * 100) : null;
+                        days.push({
+                            day: d, date: dateStr, type: 'day',
+                            isToday: dateStr === today.value,
+                            emotion: data.emotion ? emotionMap[data.emotion] : null,
+                            habitCount: data.habitCount || 0,
+                            taskRate
+                        });
+                    }
+                    return days;
+                });
+
+                const prevMonth = () => { currentMonth.value--; if (currentMonth.value < 0) { currentMonth.value = 11; currentYear.value--; } loadCalendarData(); };
+                const nextMonth = () => { currentMonth.value++; if (currentMonth.value > 11) { currentMonth.value = 0; currentYear.value++; } loadCalendarData(); };
+                const goThisMonth = () => { const n = new Date(); currentYear.value = n.getFullYear(); currentMonth.value = n.getMonth(); loadCalendarData(); };
+                const goToDate = (date) => { window.location.href = `review.html`; };
+
+                const goTo = (url) => { window.location.href = url; };
+                const exportData = async () => { try { await LifeOS.ExportImport.export(); alert('数据导出成功！'); } catch (e) { alert('导出失败: ' + e.message); } };
+                const handleImport = async (e) => {
+                    const file = e.target.files[0]; if (!file) return;
+                    try { await LifeOS.ExportImport.importFile(file, 'merge'); alert('导入成功！'); window.location.reload(); } catch (err) { alert('导入失败: ' + err.message); }
+                };
+                const getCategoryColor = (cat) => {
+                    const map = { '学习': '#7DD3FC', '工作': '#34D399', '运动': '#F59E0B', '休息': '#A78BFA', '阅读': '#F472B6', '会议': '#94A3B8' };
+                    return map[cat] || '#7DD3FC';
+                };
+
+                onMounted(loadData);
+
+                return {
+                    loading, todayDate, showImport, completionRate, maxStreak, pendingTasks, totalXP, moodIcon, moodText,
+                    todayEvents, sortedEvents, calendarDays, weekdays, currentYear, currentMonth,
+                    goTo, exportData, handleImport, getCategoryColor, goToDate,
+                    prevMonth, nextMonth, goThisMonth
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue 测试页面</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+</head>
+<body>
+    <div id="app">
+        <h1>Vue 测试页面</h1>
+        <p>当前时间：{{ currentTime }}</p>
+        <button @click="updateTime">更新时间</button>
+        <p>LifeOS 数据库状态：{{ dbStatus }}</p>
+        <button @click="testDB">测试数据库连接</button>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const currentTime = ref(new Date().toLocaleTimeString());
+                const dbStatus = ref('未测试');
+
+                const updateTime = () => {
+                    currentTime.value = new Date().toLocaleTimeString();
+                };
+
+                const testDB = async () => {
+                    try {
+                        await LifeOS.Database.init();
+                        dbStatus.value = '连接成功';
+                    } catch (error) {
+                        dbStatus.value = '连接失败: ' + error.message;
+                    }
+                };
+
+                onMounted(() => {
+                    console.log('Vue 应用已挂载');
+                });
+
+                return { currentTime, dbStatus, updateTime, testDB };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

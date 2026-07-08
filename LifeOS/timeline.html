@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 强制不缓存，避免旧版本弹窗残留 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Life OS — 时间轴</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+    <style>
+        /* ===== 时间轴页面 v1.1 增强样式 ===== */
+        
+        /* 日期导航栏 */
+        .date-nav-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: var(--bg-card);
+            backdrop-filter: blur(12px);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card);
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+            flex-wrap: wrap;
+        }
+        .date-nav-btn {
+            width: 32px; height: 32px;
+            border-radius: 50%; border: 1px solid var(--border-light); background: white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; transition: background 0.15s, transform 0.15s;
+            flex-shrink: 0;
+        }
+        .date-nav-btn:hover { background: var(--bg-hover); transform: scale(1.1); }
+        .date-display { display: flex; align-items: center; gap: 8px; }
+        .date-text { font-size: 1.1rem; font-weight: 600; font-family: var(--font-sans); min-width: 160px; }
+        .date-picker {
+            font-family: inherit; font-size: 0.85rem; padding: 4px 8px;
+            border: 1px solid var(--border-light); border-radius: var(--radius-md);
+            background: rgba(255,255,255,0.6); color: var(--text-primary); cursor: pointer;
+        }
+        .date-picker:focus { outline: none; border-color: var(--color-water-deep); }
+        .date-today-btn {
+            font-size: 0.75rem; padding: 4px 12px; border-radius: 12px;
+            border: 1px solid var(--color-water-deep); background: var(--color-water-light);
+            color: var(--color-water-deep); cursor: pointer; transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .date-today-btn:hover { background: var(--color-water-deep); color: white; }
+        .view-toggle-group { display: flex; gap: 4px; margin-left: auto; }
+        .view-toggle-btn {
+            padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-light);
+            background: white; cursor: pointer; font-size: 0.8rem; font-family: var(--font-sans);
+            transition: all 0.2s; color: var(--text-secondary);
+        }
+        .view-toggle-btn:hover { background: var(--bg-hover); }
+        .view-toggle-btn.active { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+
+        /* 统计视图 */
+        .stats-view { background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg); border: 1px solid var(--border-card); padding: 20px; box-shadow: var(--shadow-sm); }
+        .stats-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+        .stats-title { font-size: 1.1rem; font-weight: 600; }
+        .stats-options { display: flex; gap: 12px; align-items: center; }
+        .stats-option { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; }
+        .stats-option input { cursor: pointer; }
+        .stats-period-tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+        .stats-period-tab { padding: 6px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+        .stats-period-tab.active { background: var(--color-mint); color: white; border-color: var(--color-mint); }
+        .stats-period-tab:hover:not(.active) { background: var(--bg-hover); }
+
+        /* 堆叠条形图 */
+        .stacked-bar-chart { display: flex; flex-direction: column; gap: 12px; }
+        .stacked-bar-row { display: flex; align-items: center; gap: 12px; }
+        .stacked-bar-label { width: 60px; font-size: 0.8rem; color: var(--text-secondary); text-align: right; flex-shrink: 0; }
+        .stacked-bar-track { flex: 1; height: 28px; background: rgba(0,0,0,0.03); border-radius: 6px; overflow: hidden; display: flex; position: relative; }
+        .stacked-bar-segment { height: 100%; transition: width 0.5s ease; position: relative; }
+        .stacked-bar-segment:hover { filter: brightness(0.95); }
+        .stacked-bar-segment-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.65rem; color: white; font-weight: 600; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+        .stacked-bar-unrecorded { background: repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.05) 4px, rgba(0,0,0,0.05) 8px); }
+        .stacked-bar-value { width: 50px; font-size: 0.8rem; color: var(--text-muted); text-align: left; flex-shrink: 0; font-family: var(--font-sans); }
+
+        /* 图例 */
+        .chart-legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 16px; justify-content: center; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-secondary); }
+        .legend-color { width: 12px; height: 12px; border-radius: 3px; }
+
+        /* 饼图（CSS 实现） */
+        .pie-chart-container { display: flex; justify-content: center; align-items: center; gap: 40px; flex-wrap: wrap; margin: 20px 0; }
+        .pie-chart { width: 160px; height: 160px; border-radius: 50%; position: relative; }
+        .pie-hole { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80px; height: 80px; border-radius: 50%; background: var(--bg-card); display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: var(--text-muted); text-align: center; }
+        .pie-legend { display: flex; flex-direction: column; gap: 8px; }
+        .pie-legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+        .pie-legend-color { width: 14px; height: 14px; border-radius: 3px; }
+        .pie-legend-label { color: var(--text-secondary); }
+        .pie-legend-value { color: var(--text-muted); font-size: 0.75rem; }
+
+        .stats-empty { text-align: center; padding: 48px; color: var(--text-muted); }
+        .stats-empty .icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+
+        /* 月视图 */
+        .month-view {
+            background: var(--bg-card); backdrop-filter: blur(12px);
+            border-radius: var(--radius-lg); border: 1px solid var(--border-card);
+            padding: 20px; box-shadow: var(--shadow-sm);
+        }
+        .month-header { display: flex; justify-content: center; align-items: center; gap: 16px; margin-bottom: 16px; }
+        .month-nav-btn {
+            width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1rem;
+            transition: background 0.15s;
+        }
+        .month-nav-btn:hover { background: var(--bg-hover); }
+        .month-title { font-size: 1.1rem; font-weight: 600; font-family: var(--font-sans); }
+        .month-weekdays {
+            display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+            margin-bottom: 4px; text-align: center; font-size: 0.75rem;
+            color: var(--text-muted); font-family: var(--font-sans);
+        }
+        .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .month-day {
+            aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; font-size: 0.75rem; cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, background 0.15s; position: relative;
+            border: 1px solid var(--border-light); background: rgba(255,255,255,0.5); padding: 2px;
+        }
+        .month-day:hover { transform: scale(1.08); z-index: 2; box-shadow: var(--shadow-sm); }
+        .month-day.empty { background: transparent; border: none; cursor: default; pointer-events: none; }
+        .month-day.empty:hover { transform: none; box-shadow: none; }
+        .month-day.today { border: 2px solid var(--color-water-deep); background: var(--color-water-light); }
+        .month-day.has-events { background: rgba(52, 211, 153, 0.1); }
+        .month-day .day-number { font-weight: 600; font-family: var(--font-sans); font-size: 0.85rem; }
+        .month-day .day-event-dots { display: flex; gap: 2px; margin-top: 2px; flex-wrap: wrap; justify-content: center; }
+        .month-day .event-dot { width: 4px; height: 4px; border-radius: 50%; }
+        .month-day .day-event-count { font-size: 0.65rem; color: var(--text-muted); margin-top: 1px; font-family: var(--font-sans); }
+
+        /* 日视图计时器 */
+        .timer-active-bar {
+            display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+            background: linear-gradient(90deg, var(--color-water-light), rgba(52, 211, 153, 0.1));
+            border-radius: var(--radius-md); border: 1px solid var(--color-water-light);
+            margin-bottom: 16px; font-family: var(--font-sans);
+        }
+        .timer-label { font-size: 0.85rem; color: var(--text-secondary); }
+        .timer-event-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); flex: 1; }
+        .timer-elapsed { font-size: 1.1rem; font-weight: 700; color: var(--color-ravenclaw-blue); font-variant-numeric: tabular-nums; }
+
+        /* 统计面板（日视图底部） */
+        .day-stats-bar {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+            margin-top: 20px; padding: 16px; background: var(--bg-card);
+            backdrop-filter: blur(12px); border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card); box-shadow: var(--shadow-sm);
+        }
+        .day-stat { text-align: center; }
+        .day-stat-value { font-size: 1.25rem; font-weight: 700; font-family: var(--font-sans); color: var(--text-primary); }
+        .day-stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+
+        /* 重复规则选择器 */
+        .repeat-selector { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .repeat-btn { padding: 6px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.8rem; font-family: var(--font-sans); transition: all 0.2s; color: var(--text-secondary); }
+        .repeat-btn:hover { background: var(--bg-hover); }
+        .repeat-btn.active { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+        .weekday-selector { display: flex; gap: 6px; margin-top: 8px; }
+        .weekday-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.75rem; font-family: var(--font-sans); transition: all 0.2s; color: var(--text-secondary); }
+        .weekday-btn:hover { background: var(--bg-hover); }
+        .weekday-btn.active { background: var(--color-mint); color: white; border-color: var(--color-mint); }
+        .day-of-month { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); }
+        .day-input { width: 60px; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: 0.85rem; }
+        .repeat-end { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); }
+
+        .mode-toggle-btn { padding: 6px 12px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 1rem; transition: all 0.2s; }
+        .mode-toggle-btn:hover { background: var(--bg-hover); }
+        .mode-toggle-btn.active { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+
+        .timer-progress-bar { width: 100%; height: 4px; background: rgba(0,0,0,0.05); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+        .timer-progress-fill { height: 100%; background: var(--color-mint); border-radius: 2px; transition: width 1s linear; }
+
+        /* 番茄钟弹窗 */
+        .pomodoro-modal { max-width: 400px; }
+        .pomodoro-content { padding: 8px 0; }
+        .pomodoro-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+        .pomodoro-stat { text-align: center; padding: 16px; background: rgba(255,255,255,0.5); border-radius: var(--radius-lg); border: 1px solid var(--border-light); }
+        .pomodoro-value { font-size: 2rem; font-weight: 700; color: var(--color-ravenclaw-blue); font-family: var(--font-sans); }
+        .pomodoro-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; }
+        .xp-selector { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .xp-btn { padding: 8px 16px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.875rem; font-family: var(--font-sans); transition: all 0.2s; color: var(--text-secondary); }
+        .xp-btn:hover { background: var(--bg-hover); }
+        .xp-btn.active { background: var(--color-mint); color: white; border-color: var(--color-mint); }
+        .xp-input { width: 70px; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font-family: var(--font-sans); font-size: 0.875rem; text-align: center; }
+
+        .timeline-event-fix {
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+
+        /* 重叠事件并排布局 */
+        .timeline-event {
+            left: var(--event-left, 4px) !important;
+            right: auto !important;
+            width: var(--event-width, calc(100% - 8px)) !important;
+        }
+
+        @media (max-width: 768px) {
+            .date-nav-bar { padding: 10px 12px; gap: 6px; }
+            .date-text { font-size: 0.9rem; min-width: 120px; }
+            .view-toggle-group { margin-left: 0; width: 100%; justify-content: flex-end; margin-top: 6px; }
+            .day-stats-bar { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="timeline"></sidebar>
+        <main class="main-content">
+            <header class="page-header">
+                <div class="header-title-group">
+                    <h2>时间轴</h2>
+                </div>
+                <div class="header-actions">
+                    <button :class="['mode-toggle-btn', { active: timerMode === 'normal' }]" @click="timerMode = 'normal'" title="普通计时器">⏱️</button>
+                    <button :class="['mode-toggle-btn', { active: timerMode === 'pomodoro' }]" @click="timerMode = 'pomodoro'" title="番茄钟">🍅</button>
+                    <button v-if="!timerRunning" class="action-btn primary" @click="startTimer">
+                        <span>▶</span> 开始{{ timerMode === 'pomodoro' ? '番茄钟' : '计时' }}
+                    </button>
+                    <button v-else class="action-btn danger" @click="stopTimer">
+                        <span>⏹</span> 停止{{ timerMode === 'pomodoro' ? '番茄钟' : '计时' }} ({{ timerDisplay }})
+                    </button>
+                </div>
+            </header>
+
+            <!-- 日期导航 + 视图切换 -->
+            <div class="date-nav-bar">
+                <button class="date-nav-btn" @click="changeDate(-1)">‹</button>
+                <div class="date-display">
+                    <span class="date-text">{{ currentDateDisplay }}</span>
+                    <input type="date" class="date-picker" v-model="dateInput" @change="onDateInput">
+                </div>
+                <button class="date-nav-btn" @click="changeDate(1)">›</button>
+                <button v-if="!isToday" class="date-today-btn" @click="goToday">回到今天</button>
+                <div class="view-toggle-group">
+                    <button :class="['view-toggle-btn', { active: viewMode === 'day' }]" @click="viewMode = 'day'">日</button>
+                    <button :class="['view-toggle-btn', { active: viewMode === 'month' }]" @click="viewMode = 'month'">月</button>
+                    <button :class="['view-toggle-btn', { active: viewMode === 'stats' }]" @click="viewMode = 'stats'">📊 统计</button>
+                </div>
+            </div>
+
+            <!-- 日视图 -->
+            <template v-if="viewMode === 'day'">
+                <div v-if="timerRunning" class="timer-active-bar">
+                    <span class="timer-label">{{ timerMode === 'pomodoro' ? pomodoroPhaseLabel : '正在记录' }}：</span>
+                    <span class="timer-event-name">{{ timerEventName || '未命名事件' }}</span>
+                    <span class="timer-elapsed">{{ timerDisplay }}</span>
+                    <div v-if="timerMode === 'pomodoro'" class="timer-progress-bar">
+                        <div class="timer-progress-fill" :style="{ width: pomodoroProgress + '%' }"></div>
+                    </div>
+                </div>
+
+                <section class="timeline-container">
+                    <div class="timeline-column">
+                        <div class="column-header">
+                            <span class="column-icon">📋</span>
+                            <span class="column-title">预计安排</span>
+                            <span class="column-count">{{ plannedEvents.length }} 项</span>
+                        </div>
+                        <div class="timeline-body">
+                            <div class="time-labels">
+                                <div v-for="slot in timeSlots" :key="slot.time" class="time-label">{{ slot.time }}</div>
+                            </div>
+                            <div class="time-grid">
+                                <div v-for="slot in timeSlots" :key="slot.time" class="time-slot" @click="openAddEvent('planned', slot)">
+                                    <span class="slot-plus">+</span>
+                                </div>
+                                <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="getCategoryClass(evt.category)" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                    <div class="event-title">{{ evt.title }}</div>
+                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="timeline-column">
+                        <div class="column-header">
+                            <span class="column-icon">✓</span>
+                            <span class="column-title">实际安排</span>
+                            <span class="column-count">{{ actualEvents.length }} 项</span>
+                        </div>
+                        <div class="timeline-body">
+                            <div class="time-labels">
+                                <div v-for="slot in timeSlots" :key="slot.time" class="time-label">{{ slot.time }}</div>
+                            </div>
+                            <div class="time-grid">
+                                <div v-for="slot in timeSlots" :key="slot.time" class="time-slot" @click="openAddEvent('actual', slot)">
+                                    <span class="slot-plus">+</span>
+                                </div>
+                                <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="getCategoryClass(evt.category)" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                    <div class="event-title">{{ evt.title }}</div>
+                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 日统计 -->
+                <div class="day-stats-bar">
+                    <div class="day-stat">
+                        <div class="day-stat-value">{{ dayStats.planned }}</div>
+                        <div class="day-stat-label">预计项</div>
+                    </div>
+                    <div class="day-stat">
+                        <div class="day-stat-value">{{ dayStats.actual }}</div>
+                        <div class="day-stat-label">实际项</div>
+                    </div>
+                    <div class="day-stat">
+                        <div class="day-stat-value">{{ dayStats.totalHours }}h</div>
+                        <div class="day-stat-label">总时长</div>
+                    </div>
+                    <div class="day-stat">
+                        <div class="day-stat-value" :style="{ color: getCategoryColor(dayStats.topCategory) }">{{ dayStats.topCategoryLabel }}</div>
+                        <div class="day-stat-label">主要类别</div>
+                    </div>
+                    <div class="day-stat">
+                        <div class="day-stat-value">{{ dayStats.completionRate }}%</div>
+                        <div class="day-stat-label">完成率</div>
+                    </div>
+                </div>
+            </template>
+
+            <!-- 月视图 -->
+            <section v-if="viewMode === 'month'" class="month-view">
+                <div class="month-header">
+                    <button class="month-nav-btn" @click="changeMonth(-1)">‹</button>
+                    <span class="month-title">{{ currentYear }}年{{ currentMonth + 1 }}月</span>
+                    <button class="month-nav-btn" @click="changeMonth(1)">›</button>
+                </div>
+                <div class="month-weekdays">
+                    <span v-for="d in weekdays" :key="d">{{ d }}</span>
+                </div>
+                <div class="month-grid">
+                    <div v-for="(day, idx) in monthDays" :key="idx"
+                         :class="['month-day', day.type, { 'today': day.isToday, 'has-events': day.hasEvents }]"
+                         @click="day.date && selectDate(day.date)">
+                        <span v-if="day.day" class="day-number">{{ day.day }}</span>
+                        <div v-if="day.eventDots" class="day-event-dots">
+                            <span v-for="(dot, i) in day.eventDots" :key="i" class="event-dot" :style="{ background: dot }"></span>
+                        </div>
+                        <span v-if="day.eventCount" class="day-event-count">{{ day.eventCount }}项</span>
+                    </div>
+                </div>
+            </section>
+            <!-- 统计视图 -->
+            <section v-if="viewMode === 'stats'" class="stats-view">
+                <div class="stats-header">
+                    <div class="stats-title">⏰ 时间统计</div>
+                    <div class="stats-options">
+                        <label class="stats-option">
+                            <input type="checkbox" v-model="statsIncludeUnrecorded"> 显示未记录时段
+                        </label>
+                    </div>
+                </div>
+                <div class="stats-period-tabs">
+                    <button :class="['stats-period-tab', { active: statsPeriod === 'day' }]" @click="statsPeriod = 'day'">今日</button>
+                    <button :class="['stats-period-tab', { active: statsPeriod === 'week' }]" @click="statsPeriod = 'week'">本周</button>
+                    <button :class="['stats-period-tab', { active: statsPeriod === 'month' }]" @click="statsPeriod = 'month'">本月</button>
+                </div>
+
+                <div v-if="statsLoading" class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p>正在统计...</p>
+                </div>
+
+                <template v-else>
+                    <!-- 饼图总览 -->
+                    <div v-if="statsData.totalHours > 0" class="pie-chart-container">
+                        <div class="pie-chart" :style="pieChartStyle">
+                            <div class="pie-hole">{{ statsData.totalHours.toFixed(1) }}h<br>总计</div>
+                        </div>
+                        <div class="pie-legend">
+                            <div v-for="item in statsData.categoryStats" :key="item.id" class="pie-legend-item">
+                                <span class="pie-legend-color" :style="{ background: item.color }"></span>
+                                <span class="pie-legend-label">{{ item.name }}</span>
+                                <span class="pie-legend-value">{{ item.percent }}% ({{ item.hours.toFixed(1) }}h)</span>
+                            </div>
+                            <div v-if="statsIncludeUnrecorded && statsData.unrecordedHours > 0" class="pie-legend-item">
+                                <span class="pie-legend-color" style="background: #e5e7eb;"></span>
+                                <span class="pie-legend-label">未记录</span>
+                                <span class="pie-legend-value">{{ statsData.unrecordedPercent }}% ({{ statsData.unrecordedHours.toFixed(1) }}h)</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 堆叠条形图（按天/周） -->
+                    <div v-if="statsPeriod !== 'day' && statsData.dailyStats.length > 0" class="stacked-bar-chart">
+                        <div v-for="day in statsData.dailyStats" :key="day.date" class="stacked-bar-row">
+                            <span class="stacked-bar-label">{{ day.label }}</span>
+                            <div class="stacked-bar-track">
+                                <div v-for="seg in day.segments" :key="seg.id" class="stacked-bar-segment" :style="{ width: seg.percent + '%', background: seg.color }">
+                                    <span v-if="seg.percent > 8" class="stacked-bar-segment-label">{{ seg.percent }}%</span>
+                                </div>
+                                <div v-if="statsIncludeUnrecorded && day.unrecordedPercent > 0" class="stacked-bar-segment stacked-bar-unrecorded" :style="{ width: day.unrecordedPercent + '%' }"></div>
+                            </div>
+                            <span class="stacked-bar-value">{{ day.totalHours.toFixed(1) }}h</span>
+                        </div>
+                    </div>
+
+                    <!-- 今日详细分类 -->
+                    <div v-if="statsPeriod === 'day' && statsData.categoryStats.length > 0" class="stacked-bar-chart">
+                        <div class="stacked-bar-row">
+                            <span class="stacked-bar-label">今日</span>
+                            <div class="stacked-bar-track">
+                                <div v-for="seg in statsData.categoryStats" :key="seg.id" class="stacked-bar-segment" :style="{ width: seg.percent + '%', background: seg.color }">
+                                    <span v-if="seg.percent > 8" class="stacked-bar-segment-label">{{ seg.percent }}%</span>
+                                </div>
+                                <div v-if="statsIncludeUnrecorded && statsData.unrecordedPercent > 0" class="stacked-bar-segment stacked-bar-unrecorded" :style="{ width: statsData.unrecordedPercent + '%' }"></div>
+                            </div>
+                            <span class="stacked-bar-value">{{ statsData.totalHours.toFixed(1) }}h</span>
+                        </div>
+                    </div>
+
+                    <div v-if="statsData.totalHours === 0" class="stats-empty">
+                        <div class="icon">📊</div>
+                        <p>该时间段暂无记录</p>
+                    </div>
+                </template>
+            </section>
+        </main>
+
+        <!-- 弹窗 -->
+        <div v-if="showEventModal" class="modal-overlay" @click.self="closeEventModal">
+            <div class="modal event-modal">
+                <div class="modal-header">
+                    <h3>{{ editingEvent.id ? '编辑事件' : '添加事件' }}</h3>
+                    <button class="close-btn" @click="closeEventModal">✕</button>
+                </div>
+                <div class="form-fields">
+                    <div class="form-group">
+                        <label>标题</label>
+                        <input type="text" v-model="eventForm.title" placeholder="事件标题">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label>开始时间</label><input type="time" v-model="eventForm.startTime"></div>
+                        <div class="form-group"><label>结束时间</label><input type="time" v-model="eventForm.endTime"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>类别</label>
+                        <div class="category-selector">
+                            <button v-for="cat in categories" :key="cat.id" :class="['category-btn', { active: eventForm.category === cat.id }, cat.className]" @click="eventForm.category = cat.id">
+                                {{ cat.icon }} {{ cat.name }}
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>描述</label>
+                        <textarea v-model="eventForm.description" rows="3" placeholder="事件详情..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>重复规则</label>
+                        <div class="repeat-selector">
+                            <button :class="['repeat-btn', { active: !eventForm.repeatRule }]" @click="eventForm.repeatRule = null">不重复</button>
+                            <button :class="['repeat-btn', { active: eventForm.repeatRule && eventForm.repeatRule.type === 'daily' }]" @click="eventForm.repeatRule = { type: 'daily' }">每天</button>
+                            <button :class="['repeat-btn', { active: eventForm.repeatRule && eventForm.repeatRule.type === 'weekly' }]" @click="eventForm.repeatRule = { type: 'weekly', days: [1,2,3,4,5] }">每周</button>
+                            <button :class="['repeat-btn', { active: eventForm.repeatRule && eventForm.repeatRule.type === 'monthly' }]" @click="eventForm.repeatRule = { type: 'monthly', dayOfMonth: new Date().getDate() }">每月</button>
+                        </div>
+                        <!-- 每周：选择星期几 -->
+                        <div v-if="eventForm.repeatRule && eventForm.repeatRule.type === 'weekly'" class="weekday-selector">
+                            <button v-for="(label, idx) in ['日','一','二','三','四','五','六']" :key="idx"
+                                    :class="['weekday-btn', { active: eventForm.repeatRule.days && eventForm.repeatRule.days.includes(idx) }]"
+                                    @click="toggleWeekday(idx)">
+                                {{ label }}
+                            </button>
+                        </div>
+                        <!-- 每月：选择日期 -->
+                        <div v-if="eventForm.repeatRule && eventForm.repeatRule.type === 'monthly'" class="day-of-month">
+                            <label>每月几号：</label>
+                            <input type="number" v-model.number="eventForm.repeatRule.dayOfMonth" min="1" max="31" class="day-input">
+                        </div>
+                        <!-- 重复结束日期 -->
+                        <div v-if="eventForm.repeatRule" class="repeat-end">
+                            <label>结束日期（可选）：</label>
+                            <input type="date" v-model="eventForm.repeatEndDate" class="date-picker">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>关联任务</label>
+                        <select v-model="eventForm.taskId">
+                            <option value="">不关联任务</option>
+                            <option v-for="task in todayTasks" :key="task.id" :value="task.id">{{ task.title }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button v-if="editingEvent.id" class="btn-danger" @click="deleteEvent">删除</button>
+                    <div class="spacer"></div>
+                    <button class="btn-secondary" @click="closeEventModal">取消</button>
+                    <button class="btn-primary" @click="saveEvent">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 番茄钟 XP 弹窗 -->
+        <div v-if="showPomodoroXPDialog" class="modal-overlay" @click.self="closePomodoroDialog">
+            <div class="modal pomodoro-modal">
+                <div class="modal-header">
+                    <h3>🍅 番茄钟完成！</h3>
+                    <button class="close-btn" @click="showPomodoroXPDialog = false; pomodoroElapsed = 0">✕</button>
+                </div>
+                <div class="pomodoro-content">
+                    <div class="pomodoro-stats">
+                        <div class="pomodoro-stat">
+                            <div class="pomodoro-value" v-text="pomodoroMinutes"></div>
+                            <div class="pomodoro-label">专注分钟</div>
+                        </div>
+                        <div class="pomodoro-stat">
+                            <div class="pomodoro-value" v-text="pomodoroXP"></div>
+                            <div class="pomodoro-label">获得 XP</div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>关联技能（获得 XP）</label>
+                        <select v-model="pomodoroSkillId" class="form-select">
+                            <option value="">不关联技能</option>
+                            <option v-for="skill in skills" :key="skill.id" :value="skill.id">{{ skill.icon || '⭐' }} {{ skill.name }} (Lv.{{ skill.level }})</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>XP 数值</label>
+                        <div class="xp-selector">
+                            <button :class="['xp-btn', { active: pomodoroXP === 25 }]" @click="pomodoroXP = 25">25</button>
+                            <button :class="['xp-btn', { active: pomodoroXP === 50 }]" @click="pomodoroXP = 50">50</button>
+                            <button :class="['xp-btn', { active: pomodoroXP === 100 }]" @click="pomodoroXP = 100">100</button>
+                            <input type="number" v-model.number="pomodoroXP" min="1" max="500" class="xp-input">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" @click="showPomodoroXPDialog = false; pomodoroElapsed = 0">跳过</button>
+                    <button class="btn-primary" @click="assignPomodoroXP">💾 保存 XP</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, onUnmounted, watch } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard', name: '仪表盘', url: 'index.html', icon: '📊' },
+                    { id: 'timeline', name: '时间轴', url: 'timeline.html', icon: '⏰' },
+                    { id: 'tasks', name: '任务', url: 'tasks.html', icon: '📋' },
+                    { id: 'habits', name: '习惯', url: 'habits.html', icon: '✅' },
+                    { id: 'review', name: '回顾', url: 'review.html', icon: '📝' },
+                    { id: 'learning', name: '学习', url: 'learning.html', icon: '🎓' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤' },
+                    { id: 'settings', name: '设置', url: 'settings.html', icon: '⚙️' }
+                ]);
+                const activeNavItems = computed(() => navItems.value.map(item => ({ ...item, active: item.id === props.activePage })));
+                return { sidebarCollapsed, activeNavItems };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                // === 日期与视图状态 ===
+                const currentDate = ref(LifeOS.Utils.formatDate());
+                const dateInput = ref(currentDate.value);
+                const viewMode = ref('day');
+                const currentYear = ref(new Date().getFullYear());
+                const currentMonth = ref(new Date().getMonth());
+                const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+                
+                const isToday = computed(() => currentDate.value === LifeOS.Utils.formatDate());
+                const currentDateDisplay = computed(() => {
+                    const d = new Date(currentDate.value + 'T00:00:00');
+                    const wd = ['周日','周一','周二','周三','周四','周五','周六'];
+                    return `${d.getMonth() + 1}月${d.getDate()}日 ${wd[d.getDay()]}`;
+                });
+
+                // === 日期导航 ===
+                const changeDate = (delta) => {
+                    const d = new Date(currentDate.value + 'T00:00:00');
+                    d.setDate(d.getDate() + delta);
+                    currentDate.value = LifeOS.Utils.formatDate(d);
+                    dateInput.value = currentDate.value;
+                    loadEvents();
+                };
+                const goToday = () => {
+                    currentDate.value = LifeOS.Utils.formatDate();
+                    dateInput.value = currentDate.value;
+                    viewMode.value = 'day';
+                    loadEvents();
+                };
+                const onDateInput = () => {
+                    if (dateInput.value) {
+                        currentDate.value = dateInput.value;
+                        viewMode.value = 'day';
+                        loadEvents();
+                    }
+                };
+                const selectDate = (date) => {
+                    currentDate.value = date;
+                    dateInput.value = date;
+                    viewMode.value = 'day';
+                    loadEvents();
+                };
+
+                // === 月视图 ===
+                const monthDays = ref([]);
+                const changeMonth = (delta) => {
+                    currentMonth.value += delta;
+                    if (currentMonth.value > 11) { currentMonth.value = 0; currentYear.value++; }
+                    if (currentMonth.value < 0) { currentMonth.value = 11; currentYear.value--; }
+                    loadMonthData();
+                };
+                const loadMonthData = async () => {
+                    const yearMonth = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}`;
+                    const allEvents = await LifeOS.Timeline.getAll();
+                    const monthEvents = allEvents.filter(e => e.date && e.date.startsWith(yearMonth));
+                    const eventsByDate = {};
+                    for (const e of monthEvents) {
+                        if (!eventsByDate[e.date]) eventsByDate[e.date] = [];
+                        eventsByDate[e.date].push(e);
+                    }
+                    const days = [];
+                    const firstDay = new Date(currentYear.value, currentMonth.value, 1);
+                    const lastDay = new Date(currentYear.value, currentMonth.value + 1, 0);
+                    const startOffset = firstDay.getDay();
+                    for (let i = 0; i < startOffset; i++) days.push({ type: 'empty' });
+                    for (let d = 1; d <= lastDay.getDate(); d++) {
+                        const dateStr = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                        const dayEvents = eventsByDate[dateStr] || [];
+                        const eventDots = dayEvents.slice(0, 3).map(e => {
+                            const cat = categories.find(c => c.id === e.category);
+                            return cat ? cat.color : '#94A3B8';
+                        });
+                        days.push({
+                            day: d, date: dateStr, type: 'day',
+                            isToday: dateStr === LifeOS.Utils.formatDate(),
+                            hasEvents: dayEvents.length > 0,
+                            eventCount: dayEvents.length,
+                            eventDots
+                        });
+                    }
+                    monthDays.value = days;
+                };
+
+                // === 统计视图 ===
+                const statsPeriod = ref('day');
+                const statsIncludeUnrecorded = ref(false);
+                const statsLoading = ref(false);
+                const statsCache = ref({ day: null, week: null, month: null });
+
+                const statsData = computed(() => {
+                    const cache = statsCache.value[statsPeriod.value];
+                    if (!cache) return { totalHours: 0, categoryStats: [], dailyStats: [], unrecordedHours: 0, unrecordedPercent: 0 };
+                    return cache;
+                });
+
+                const pieChartStyle = computed(() => {
+                    const stats = statsData.value;
+                    if (!stats.categoryStats.length) return {};
+                    let gradient = 'conic-gradient(';
+                    let currentDeg = 0;
+                    const cats = statsIncludeUnrecorded.value && stats.unrecordedPercent > 0
+                        ? [...stats.categoryStats, { id: 'unrecorded', color: '#e5e7eb', percent: stats.unrecordedPercent }]
+                        : stats.categoryStats;
+                    for (const cat of cats) {
+                        const deg = (cat.percent / 100) * 360;
+                        gradient += `${cat.color} ${currentDeg}deg ${currentDeg + deg}deg, `;
+                        currentDeg += deg;
+                    }
+                    gradient = gradient.slice(0, -2) + ')';
+                    return { background: gradient };
+                });
+
+                const loadStats = async () => {
+                    statsLoading.value = true;
+                    const period = statsPeriod.value;
+                    let dates = [];
+                    const today = new Date(currentDate.value + 'T00:00:00');
+                    
+                    if (period === 'day') {
+                        dates = [currentDate.value];
+                    } else if (period === 'week') {
+                        const dayOfWeek = today.getDay();
+                        const startOfWeek = new Date(today);
+                        startOfWeek.setDate(today.getDate() - dayOfWeek);
+                        for (let i = 0; i < 7; i++) {
+                            const d = new Date(startOfWeek);
+                            d.setDate(startOfWeek.getDate() + i);
+                            dates.push(LifeOS.Utils.formatDate(d));
+                        }
+                    } else if (period === 'month') {
+                        const yearMonth = currentDate.value.slice(0, 7);
+                        const allEvents = await LifeOS.Timeline.getAll();
+                        const monthEvents = allEvents.filter(e => e.date && e.date.startsWith(yearMonth));
+                        const uniqueDates = [...new Set(monthEvents.map(e => e.date))].sort();
+                        dates = uniqueDates.length > 0 ? uniqueDates : [currentDate.value];
+                    }
+
+                    // 加载所有事件
+                    const allEvents = await LifeOS.Timeline.getAll();
+                    const categoryTotals = {};
+                    let totalMinutes = 0;
+                    const dailyStats = [];
+
+                    for (const dateStr of dates) {
+                        const dayEvents = allEvents.filter(e => e.date === dateStr);
+                        let dayMinutes = 0;
+                        const daySegments = [];
+                        const dayCatTotals = {};
+                        
+                        for (const e of dayEvents) {
+                            const s = parseTime(e.startTime);
+                            const en = parseTime(e.endTime);
+                            let mins = (en.hour * 60 + en.minute) - (s.hour * 60 + s.minute);
+                            if (mins < 0) mins += 24 * 60;
+                            dayMinutes += mins;
+                            totalMinutes += mins;
+                            const cat = e.category || 'other';
+                            dayCatTotals[cat] = (dayCatTotals[cat] || 0) + mins;
+                            categoryTotals[cat] = (categoryTotals[cat] || 0) + mins;
+                        }
+                        
+                        // 天统计
+                        const dayTotalHours = dayMinutes / 60;
+                        const daySegmentsArr = [];
+                        for (const [catId, mins] of Object.entries(dayCatTotals)) {
+                            const cat = categories.find(c => c.id === catId);
+                            const percent = dayMinutes > 0 ? Math.round((mins / dayMinutes) * 100) : 0;
+                            daySegmentsArr.push({ id: catId, color: cat ? cat.color : '#94A3B8', percent, hours: mins / 60 });
+                        }
+                        const unrecordedDay = Math.max(24 * 60 - dayMinutes, 0);
+                        const unrecordedDayPercent = Math.round((unrecordedDay / (24 * 60)) * 100);
+                        
+                        const d = new Date(dateStr + 'T00:00:00');
+                        const label = period === 'week' ? `${d.getMonth() + 1}/${d.getDate()}` : d.getDate() + '日';
+                        
+                        dailyStats.push({
+                            date: dateStr, label, totalHours: dayTotalHours,
+                            segments: daySegmentsArr.sort((a, b) => b.percent - a.percent),
+                            unrecordedPercent: unrecordedDayPercent, unrecordedHours: unrecordedDay / 60
+                        });
+                    }
+                    
+                    const totalHours = totalMinutes / 60;
+                    const periodMinutes = period === 'day' ? 24 * 60 : dates.length * 24 * 60;
+                    const unrecordedMinutes = Math.max(periodMinutes - totalMinutes, 0);
+                    const unrecordedHours = unrecordedMinutes / 60;
+                    const unrecordedPercent = Math.round((unrecordedMinutes / periodMinutes) * 100);
+                    
+                    const categoryStats = [];
+                    for (const [catId, mins] of Object.entries(categoryTotals)) {
+                        const cat = categories.find(c => c.id === catId);
+                        const percent = totalMinutes > 0 ? Math.round((mins / totalMinutes) * 100) : 0;
+                        categoryStats.push({ id: catId, name: cat ? cat.name : '其他', color: cat ? cat.color : '#94A3B8', percent, hours: mins / 60 });
+                    }
+                    categoryStats.sort((a, b) => b.percent - a.percent);
+                    
+                    statsCache.value[period] = {
+                        totalHours, categoryStats, dailyStats,
+                        unrecordedHours, unrecordedPercent, dates: dates.length
+                    };
+                    statsLoading.value = false;
+                };
+
+                watch([statsPeriod, statsIncludeUnrecorded], () => { loadStats(); });
+                watch(currentDate, () => { statsCache.value = { day: null, week: null, month: null }; if (viewMode.value === 'stats') loadStats(); });
+                watch(viewMode, (v) => { if (v === 'stats') loadStats(); });
+                const timeSlots = ref([]);
+                const SLOT_HEIGHT = 40;
+                for (let h = 0; h < 24; h++) {
+                    for (let m of [0, 30]) {
+                        timeSlots.value.push({
+                            time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+                            hour: h, minute: m,
+                            top: (h * 2 + (m === 30 ? 1 : 0)) * SLOT_HEIGHT
+                        });
+                    }
+                }
+
+                // === 事件数据 ===
+                const allEvents = ref([]);
+                const plannedEvents = computed(() => allEvents.value.filter(e => e.type === 'planned'));
+                const actualEvents = computed(() => allEvents.value.filter(e => e.type === 'actual'));
+                const todayTasks = ref([]);
+
+                const loadEvents = async () => {
+                    await LifeOS.Database.init();
+                    allEvents.value = await LifeOS.Timeline.getByDate(currentDate.value);
+                    todayTasks.value = await LifeOS.Task.getTodayTasks();
+                    skills.value = await LifeOS.Skill.getAll();
+                };
+
+                // === 日统计 ===
+                const dayStats = computed(() => {
+                    const planned = plannedEvents.value.length;
+                    const actual = actualEvents.value.length;
+                    let totalMinutes = 0;
+                    const catMinutes = {};
+                    for (const e of allEvents.value) {
+                        const s = parseTime(e.startTime);
+                        const en = parseTime(e.endTime);
+                        let mins = (en.hour * 60 + en.minute) - (s.hour * 60 + s.minute);
+                        if (mins < 0) mins += 24 * 60;
+                        totalMinutes += mins;
+                        catMinutes[e.category] = (catMinutes[e.category] || 0) + mins;
+                    }
+                    let topCat = 'other', topMins = 0;
+                    for (const [cat, mins] of Object.entries(catMinutes)) {
+                        if (mins > topMins) { topCat = cat; topMins = mins; }
+                    }
+                    const catLabel = categories.find(c => c.id === topCat);
+                    const completionRate = planned > 0 ? Math.round((actual / planned) * 100) : 0;
+                    return {
+                        planned, actual,
+                        totalHours: (totalMinutes / 60).toFixed(1),
+                        topCategory: topCat,
+                        topCategoryLabel: catLabel ? catLabel.name : '其他',
+                        completionRate
+                    };
+                });
+
+                // === 弹窗 ===
+                const showEventModal = ref(false);
+                const editingEvent = ref({});
+                const eventForm = ref({ title: '', startTime: '09:00', endTime: '10:00', category: 'other', description: '', taskId: '', type: 'planned' });
+
+                // === 番茄钟弹窗状态 ===
+                const showPomodoroXPDialog = ref(false);
+                const pomodoroSkillId = ref('');
+                const pomodoroXP = ref(50);
+                const pomodoroElapsed = ref(0);
+                const pomodoroMinutes = computed(() => Math.floor(pomodoroElapsed.value / 60));
+                const skills = ref([]);
+
+                const categories = [
+                    { id: 'learning', name: '学习', icon: '📚', className: 'category-learning', color: '#7DD3FC' },
+                    { id: 'work', name: '工作', icon: '💼', className: 'category-work', color: '#34D399' },
+                    { id: 'rest', name: '休息', icon: '☕', className: 'category-rest', color: '#FDE68A' },
+                    { id: 'sport', name: '运动', icon: '🏃', className: 'category-sport', color: '#FBBF24' },
+                    { id: 'other', name: '其他', icon: '📝', className: 'category-other', color: '#94A3B8' }
+                ];
+
+                const getCategoryClass = (category) => {
+                    const cat = categories.find(c => c.id === category);
+                    return cat ? cat.className : 'category-other';
+                };
+                const getCategoryColor = (category) => {
+                    const cat = categories.find(c => c.id === category);
+                    return cat ? cat.color : '#94A3B8';
+                };
+                const parseTime = (timeStr) => {
+                    const [h, m] = timeStr.split(':').map(Number);
+                    return { hour: h, minute: m };
+                };
+                const timeToMinutes = (timeStr) => {
+                    const [h, m] = timeStr.split(':').map(Number);
+                    return h * 60 + m;
+                };
+
+                const assignOverlapColumns = (events) => {
+                    if (!events || !events.length) return [];
+                    const evts = events.map(e => {
+                        const start = timeToMinutes(e.startTime);
+                        let end = timeToMinutes(e.endTime);
+                        if (end <= start) end += 24 * 60;
+                        return { ...e, _start: start, _end: end };
+                    });
+                    evts.sort((a, b) => a._start - b._start);
+                    const activeColumns = [];
+                    for (const evt of evts) {
+                        let col = -1;
+                        for (let i = 0; i < activeColumns.length; i++) {
+                            if (activeColumns[i] <= evt._start) {
+                                col = i;
+                                activeColumns[i] = evt._end;
+                                break;
+                            }
+                        }
+                        if (col === -1) {
+                            col = activeColumns.length;
+                            activeColumns.push(evt._end);
+                        }
+                        evt._column = col;
+                    }
+                    for (const evt of evts) {
+                        let maxCol = evt._column;
+                        for (const other of evts) {
+                            if (evt.id === other.id) continue;
+                            if (evt._start < other._end && evt._end > other._start) {
+                                maxCol = Math.max(maxCol, other._column);
+                            }
+                        }
+                        evt._totalColumns = maxCol + 1;
+                    }
+                    return evts;
+                };
+
+                const processedPlannedEvents = computed(() => assignOverlapColumns(plannedEvents.value));
+                const processedActualEvents = computed(() => assignOverlapColumns(actualEvents.value));
+
+                const getEventStyle = (evt) => {
+                    const start = parseTime(evt.startTime);
+                    const end = parseTime(evt.endTime);
+                    let duration = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+                    if (duration < 0) duration += 24 * 60;
+                    const top = (start.hour * 2 + (start.minute >= 30 ? 1 : 0)) * SLOT_HEIGHT + (start.minute % 30) / 30 * SLOT_HEIGHT;
+                    const height = Math.max(duration / 30 * SLOT_HEIGHT, 24);
+                    const col = evt._column || 0;
+                    const total = evt._totalColumns || 1;
+                    const leftPercent = (col / total) * 100;
+                    const widthPercent = 100 / total;
+                    return {
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        '--event-left': `${leftPercent}%`,
+                        '--event-width': `calc(${widthPercent}% - 8px)`,
+                        right: 'auto'
+                    };
+                };
+
+                const toggleWeekday = (idx) => {
+                    if (!eventForm.value.repeatRule || eventForm.value.repeatRule.type !== 'weekly') return;
+                    const days = eventForm.value.repeatRule.days || [];
+                    if (days.includes(idx)) {
+                        eventForm.value.repeatRule.days = days.filter(d => d !== idx);
+                    } else {
+                        eventForm.value.repeatRule.days = [...days, idx].sort((a, b) => a - b);
+                    }
+                };
+
+                const openAddEvent = (type, slot) => {
+                    editingEvent.value = {};
+                    const hour = String(slot.hour).padStart(2, '0');
+                    const minute = String(slot.minute).padStart(2, '0');
+                    const nextHour = slot.minute === 30 ? slot.hour + 1 : slot.hour;
+                    const nextMinute = slot.minute === 30 ? 0 : 30;
+                    eventForm.value = {
+                        title: '', startTime: `${hour}:${minute}`,
+                        endTime: `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`,
+                        category: 'other', description: '', taskId: '', type,
+                        repeatRule: null, repeatEndDate: ''
+                    };
+                    showEventModal.value = true;
+                };
+                const openEditEvent = (evt) => {
+                    editingEvent.value = evt;
+                    eventForm.value = {
+                        title: evt.title || '', startTime: evt.startTime || '09:00',
+                        endTime: evt.endTime || '10:00', category: evt.category || 'other',
+                        description: evt.description || '', taskId: evt.taskId || '', type: evt.type || 'planned',
+                        repeatRule: evt.repeatRule || null, repeatEndDate: evt.repeatEndDate || ''
+                    };
+                    showEventModal.value = true;
+                };
+                const closeEventModal = () => { showEventModal.value = false; editingEvent.value = {}; };
+
+                const saveEvent = async () => {
+                    if (!eventForm.value.title.trim()) { alert('请输入事件标题'); return; }
+                    try {
+                        // 深拷贝，去除 Vue 响应式 Proxy 包装
+                        const rawForm = JSON.parse(JSON.stringify(eventForm.value));
+                        const data = { ...rawForm, date: currentDate.value, updatedAt: LifeOS.Utils.now() };
+                        // 清理 repeatEndDate 空字符串
+                        if (!data.repeatEndDate) data.repeatEndDate = null;
+                        // 清理 repeatRule：如果没有设置或 type 无效，设为 null
+                        if (!data.repeatRule || !data.repeatRule.type) data.repeatRule = null;
+                        if (data.repeatRule && data.repeatRule.type === 'weekly' && (!data.repeatRule.days || data.repeatRule.days.length === 0)) {
+                            data.repeatRule = null;
+                        }
+                        if (data.repeatRule && data.repeatRule.type === 'monthly' && !data.repeatRule.dayOfMonth) {
+                            data.repeatRule = null;
+                        }
+                        if (editingEvent.value.id && !editingEvent.value.id.includes('_')) {
+                            await LifeOS.Timeline.update(editingEvent.value.id, data);
+                        } else {
+                            await LifeOS.Timeline.create(data);
+                        }
+                        await loadEvents();
+                        if (viewMode.value === 'month') await loadMonthData();
+                        closeEventModal();
+                    } catch (err) {
+                        console.error('保存事件失败:', err);
+                        alert('保存失败：' + (err.message || '未知错误'));
+                    }
+                };
+                const deleteEvent = async () => {
+                    if (!confirm('确定删除此事件？')) return;
+                    try {
+                        let id = editingEvent.value.id;
+                        // 如果是循环虚拟实例（id 包含 _date），提取原始 ID
+                        if (id && id.includes('_')) {
+                            id = id.split('_')[0];
+                        }
+                        await LifeOS.Timeline.delete(id);
+                        await loadEvents();
+                        if (viewMode.value === 'month') await loadMonthData();
+                        closeEventModal();
+                    } catch (err) {
+                        console.error('删除事件失败:', err);
+                        alert('删除失败：' + (err.message || '未知错误'));
+                    }
+                };
+
+                // === 番茄钟 / 计时器 ===
+                const timerMode = ref('normal'); // 'normal' | 'pomodoro'
+                const timerRunning = ref(false);
+                const timerStartTime = ref(null);
+                const timerElapsed = ref(0);
+                const timerEventName = ref('');
+                const pomodoroPhase = ref('focus'); // 'focus' | 'break'
+                const pomodoroFocusMinutes = ref(25);
+                const pomodoroBreakMinutes = ref(5);
+                let timerInterval = null;
+                
+                const timerDisplay = computed(() => {
+                    const m = Math.floor(timerElapsed.value / 60);
+                    const s = timerElapsed.value % 60;
+                    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                });
+                const pomodoroProgress = computed(() => {
+                    const totalSeconds = pomodoroPhase.value === 'focus' 
+                        ? pomodoroFocusMinutes.value * 60 
+                        : pomodoroBreakMinutes.value * 60;
+                    return Math.min(100, (timerElapsed.value / totalSeconds) * 100);
+                });
+                const pomodoroPhaseLabel = computed(() => {
+                    return pomodoroPhase.value === 'focus' ? '专注中' : '休息中';
+                });
+
+                const closePomodoroDialog = () => {
+                    try {
+                        showPomodoroXPDialog.value = false;
+                        pomodoroElapsed.value = 0;
+                    } catch (e) {
+                        console.error('关闭弹窗失败:', e);
+                    }
+                };
+
+                const assignPomodoroXP = async () => {
+                    if (pomodoroSkillId.value && pomodoroXP.value > 0) {
+                        await LifeOS.Skill.addXP(pomodoroSkillId.value, pomodoroXP.value);
+                        alert(`已成功分配 ${pomodoroXP.value} XP！`);
+                    }
+                    showPomodoroXPDialog.value = false;
+                    pomodoroSkillId.value = '';
+                    pomodoroXP.value = 50;
+                    pomodoroElapsed.value = 0;
+                };
+
+                const startTimer = () => {
+                    if (timerMode.value === 'pomodoro') {
+                        startPomodoro();
+                    } else {
+                        const name = prompt('请输入计时事件名称：', '专注时间');
+                        if (!name) return;
+                        timerEventName.value = name;
+                        timerRunning.value = true;
+                        timerStartTime.value = Date.now();
+                        timerElapsed.value = 0;
+                        timerInterval = setInterval(() => {
+                            timerElapsed.value = Math.floor((Date.now() - timerStartTime.value) / 1000);
+                        }, 1000);
+                    }
+                };
+                
+                const startPomodoro = () => {
+                    const name = prompt('番茄钟专注任务：', '专注学习');
+                    if (!name) return;
+                    timerEventName.value = name;
+                    pomodoroPhase.value = 'focus';
+                    timerRunning.value = true;
+                    timerStartTime.value = Date.now();
+                    timerElapsed.value = 0;
+                    timerInterval = setInterval(() => {
+                        timerElapsed.value = Math.floor((Date.now() - timerStartTime.value) / 1000);
+                        const totalSeconds = pomodoroFocusMinutes.value * 60;
+                        if (timerElapsed.value >= totalSeconds) {
+                            // 专注时间结束，自动切换到休息或结束
+                            completePomodoroPhase();
+                        }
+                    }, 1000);
+                };
+                
+                const completePomodoroPhase = () => {
+                    if (pomodoroPhase.value === 'focus') {
+                        // 先保存专注时长，再重置 timerElapsed
+                        pomodoroElapsed.value = timerElapsed.value;
+                        savePomodoroEvent().then(() => {
+                            showPomodoroXPDialog.value = true;
+                        });
+                    }
+                    // 停止计时器
+                    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+                    timerRunning.value = false;
+                    timerElapsed.value = 0;
+                };
+                
+                const savePomodoroEvent = async () => {
+                    const now = new Date();
+                    const elapsed = pomodoroElapsed.value > 0 ? pomodoroElapsed.value : timerElapsed.value;
+                    const startTime = new Date(now.getTime() - elapsed * 1000);
+                    const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
+                    const endStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                    const minutes = Math.floor(elapsed / 60);
+                    const seconds = elapsed % 60;
+                    const durationStr = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                    await LifeOS.Timeline.create({
+                        title: `🍅 ${timerEventName.value}`,
+                        startTime: startStr, endTime: endStr,
+                        category: 'learning', description: `番茄钟专注记录，持续 ${durationStr}`,
+                        type: 'actual', date: currentDate.value
+                    });
+                    await loadEvents();
+                };
+
+                const stopTimer = async () => {
+                    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+                    if (timerMode.value === 'normal') {
+                        const now = new Date();
+                        const startTime = new Date(now.getTime() - timerElapsed.value * 1000);
+                        const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`;
+                        const endStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                        await LifeOS.Timeline.create({
+                            title: timerEventName.value, startTime: startStr, endTime: endStr,
+                            category: 'work', description: `自动计时记录，持续 ${timerDisplay.value}`,
+                            type: 'actual', date: currentDate.value
+                        });
+                    } else {
+                        // 番茄钟模式下提前停止
+                        if (timerElapsed.value > 60) { // 至少1分钟才记录
+                            pomodoroElapsed.value = timerElapsed.value;
+                            await savePomodoroEvent();
+                            showPomodoroXPDialog.value = true;
+                        }
+                    }
+                    timerRunning.value = false; timerElapsed.value = 0; timerEventName.value = '';
+                    await loadEvents();
+                };
+
+                onMounted(() => {
+                    showPomodoroXPDialog.value = false;
+                    loadEvents();
+                    loadMonthData();
+                    // ESC 键关闭弹窗
+                    document.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape' && showPomodoroXPDialog.value) {
+                            closePomodoroDialog();
+                        }
+                    });
+                });
+                onUnmounted(() => { if (timerInterval) clearInterval(timerInterval); });
+
+                return {
+                    currentDate, dateInput, viewMode, currentYear, currentMonth, weekdays,
+                    isToday, currentDateDisplay, changeDate, goToday, onDateInput, selectDate,
+                    changeMonth, monthDays,
+                    timeSlots, plannedEvents, actualEvents, todayTasks, dayStats, processedPlannedEvents, processedActualEvents,
+                    showEventModal, editingEvent, eventForm, categories,
+                    timerRunning, timerDisplay, timerEventName, timerMode, pomodoroPhase, pomodoroProgress, pomodoroPhaseLabel,
+                    showPomodoroXPDialog, pomodoroSkillId, pomodoroXP, pomodoroElapsed, pomodoroMinutes, skills,
+                    statsPeriod, statsIncludeUnrecorded, statsLoading, statsData, pieChartStyle,
+                    getEventStyle, getCategoryClass, getCategoryColor, parseTime,
+                    openAddEvent, openEditEvent, closeEventModal, saveEvent, deleteEvent,
+                    startTimer, stopTimer, toggleWeekday, assignPomodoroXP, closePomodoroDialog
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

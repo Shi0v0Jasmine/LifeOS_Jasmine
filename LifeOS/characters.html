@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Life OS — 角色库</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js"></script>
+</head>
+<body>
+    <div id="app">
+        <sidebar active-page="characters"></sidebar>
+        <main class="main-content">
+            <!-- 页面头部 -->
+            <header class="page-header">
+                <div class="header-title-group">
+                    <h2>角色库</h2>
+                    <span class="header-subtitle">{{ characters.length }} 位角色 · {{ seriesList.length }} 个系列</span>
+                </div>
+                <div class="header-actions">
+                    <button v-if="characters.length === 0" class="action-btn" @click="importPreset">
+                        <span>📥</span> 导入预置角色
+                    </button>
+                    <button class="action-btn primary" @click="showCreate = true">
+                        <span>➕</span> 添加角色
+                    </button>
+                </div>
+            </header>
+
+            <!-- 筛选栏 -->
+            <section class="filter-bar">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" v-model="searchQuery" placeholder="搜索角色名..." @input="onSearch">
+                </div>
+                <div class="series-tabs">
+                    <button 
+                        v-for="s in seriesTabs" :key="s.id"
+                        :class="['series-tab', { active: activeSeries === s.id }]"
+                        @click="activeSeries = s.id"
+                    >
+                        {{ s.name }}
+                    </button>
+                </div>
+            </section>
+
+            <!-- 角色卡片网格 -->
+            <section class="characters-grid" v-if="filteredCharacters.length">
+                <div 
+                    v-for="char in filteredCharacters" :key="char.id"
+                    class="character-card"
+                    @click="openDetail(char)"
+                >
+                    <div class="character-avatar-wrap">
+                        <img 
+                            v-if="char.avatar" 
+                            :src="char.avatar" 
+                            class="character-avatar"
+                            alt=""
+                        >
+                        <div v-else class="character-avatar avatar-placeholder">
+                            {{ char.name.charAt(0) }}
+                        </div>
+                        <div class="priority-badge" :style="{ background: getPriorityColor(char.priority) }">
+                            {{ char.priority || 50 }}
+                        </div>
+                    </div>
+                    <div class="character-info">
+                        <div class="character-name">{{ char.name }}</div>
+                        <div class="character-series">{{ char.series }}</div>
+                        <div class="character-meta">
+                            <span v-if="char.animal" class="meta-tag">{{ char.animal }}</span>
+                            <span v-if="char.jerseyNumber" class="meta-tag">#{{ char.jerseyNumber }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 空状态 -->
+            <div v-else class="empty-state">
+                <div class="empty-icon">👤</div>
+                <p>暂无角色</p>
+                <p class="empty-hint">点击"导入预置角色"或"添加角色"开始使用</p>
+            </div>
+        </main>
+
+        <!-- 角色详情/编辑弹窗 -->
+        <div v-if="detailChar" class="modal-overlay" @click.self="closeDetail">
+            <div class="modal character-modal">
+                <div class="modal-header">
+                    <h3>{{ isEditing ? '编辑角色' : '角色详情' }}</h3>
+                    <button class="close-btn" @click="closeDetail">✕</button>
+                </div>
+                
+                <div class="character-form">
+                    <!-- 头像区域 -->
+                    <div class="avatar-edit-area">
+                        <div class="avatar-preview-large">
+                            <img v-if="editForm.avatar" :src="editForm.avatar" class="avatar-large" alt="">
+                            <div v-else class="avatar-large avatar-placeholder-large">
+                                {{ editForm.name ? editForm.name.charAt(0) : '?' }}
+                            </div>
+                        </div>
+                        <label class="avatar-upload-btn">
+                            <input type="file" accept="image/*" @change="handleAvatarUpload" hidden>
+                            <span>📷 上传头像</span>
+                        </label>
+                        <p class="avatar-hint">支持 JPG/PNG，会自动裁剪为圆形</p>
+                    </div>
+
+                    <!-- 表单字段 -->
+                    <div class="form-fields">
+                        <div class="form-group">
+                            <label>姓名</label>
+                            <input type="text" v-model="editForm.name" placeholder="角色姓名">
+                        </div>
+                        <div class="form-group">
+                            <label>出自作品</label>
+                            <input type="text" v-model="editForm.series" placeholder="如：排球少年">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>背号</label>
+                                <input type="text" v-model="editForm.jerseyNumber" placeholder="#">
+                            </div>
+                            <div class="form-group">
+                                <label>年级</label>
+                                <input type="text" v-model="editForm.grade" placeholder="如：高三">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>位置</label>
+                                <input type="text" v-model="editForm.position" placeholder="如：S">
+                            </div>
+                            <div class="form-group">
+                                <label>动物塑</label>
+                                <input type="text" v-model="editForm.animal" placeholder="如：雪豹">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>生日</label>
+                            <input type="text" v-model="editForm.birthday" placeholder="MM/DD">
+                        </div>
+                        <div class="form-group">
+                            <label>性格标签（逗号分隔）</label>
+                            <input type="text" 
+                                   :value="(editForm.personalityTags || []).join('，')" 
+                                   @input="e => editForm.personalityTags = e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean)"
+                                   placeholder="如：温柔, 自恋, 撒娇">
+                        </div>
+                        <div class="form-group">
+                            <label>台词风格</label>
+                            <textarea v-model="editForm.dialogueStyle" rows="3" placeholder="描述角色的说话风格..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>互动优先级（1-100，越高越优先）</label>
+                            <input type="range" v-model.number="editForm.priority" min="1" max="100">
+                            <span class="range-value">{{ editForm.priority }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn-danger" v-if="detailChar.id" @click="deleteChar">删除</button>
+                    <div class="spacer"></div>
+                    <button class="btn-secondary" @click="closeDetail">取消</button>
+                    <button class="btn-primary" @click="saveChar">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 新建角色弹窗（简化版） -->
+        <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
+            <div class="modal character-modal">
+                <div class="modal-header">
+                    <h3>添加新角色</h3>
+                    <button class="close-btn" @click="showCreate = false">✕</button>
+                </div>
+                <div class="form-fields">
+                    <div class="form-group">
+                        <label>姓名 *</label>
+                        <input type="text" v-model="newForm.name" placeholder="角色姓名">
+                    </div>
+                    <div class="form-group">
+                        <label>出自作品</label>
+                        <input type="text" v-model="newForm.series" placeholder="如：排球少年">
+                    </div>
+                    <div class="form-group">
+                        <label>动物塑</label>
+                        <input type="text" v-model="newForm.animal" placeholder="如：雪豹">
+                    </div>
+                    <div class="form-group">
+                        <label>台词风格</label>
+                        <textarea v-model="newForm.dialogueStyle" rows="2" placeholder="描述角色的说话风格..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" @click="showCreate = false">取消</button>
+                    <button class="btn-primary" @click="createChar">创建</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const Sidebar = {
+            name: 'Sidebar',
+            props: { activePage: { type: String, default: 'dashboard' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = ref([
+                    { id: 'dashboard',  name: '仪表盘',  url: 'index.html',      icon: '📊' },
+                    { id: 'timeline',   name: '时间轴',  url: 'timeline.html',   icon: '⏰' },
+                    { id: 'tasks',      name: '任务',    url: 'tasks.html',      icon: '📋' },
+                    { id: 'habits',     name: '习惯',    url: 'habits.html',     icon: '✅' },
+                    { id: 'review',     name: '回顾',    url: 'review.html',     icon: '📝' },
+                    { id: 'learning',   name: '学习',    url: 'learning.html',   icon: '🎓' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤' },
+                    { id: 'settings',   name: '设置',    url: 'settings.html',   icon: '⚙️' }
+                ]);
+                const activeNavItems = computed(() => {
+                    return navItems.value.map(item => ({ ...item, active: item.id === props.activePage }));
+                });
+                return { sidebarCollapsed, activeNavItems };
+            },
+            template: `
+                <aside class="sidebar" :class="{ 'collapsed': sidebarCollapsed }">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" @click="sidebarCollapsed = !sidebarCollapsed">
+                            {{ sidebarCollapsed ? '→' : '←' }}
+                        </button>
+                    </div>
+                    <nav class="sidebar-nav">
+                        <a v-for="item in activeNavItems" :key="item.id"
+                           :href="item.url"
+                           :class="['nav-item', { 'active': item.active }]">
+                            <span class="nav-icon">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                </aside>
+            `
+        };
+
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const characters = ref([]);
+                const searchQuery = ref('');
+                const activeSeries = ref('all');
+                const detailChar = ref(null);
+                const isEditing = ref(false);
+                const showCreate = ref(false);
+                const editForm = ref({});
+                const newForm = ref({ name: '', series: '', animal: '', dialogueStyle: '' });
+
+                const seriesTabs = ref([
+                    { id: 'all', name: '全部' },
+                    { id: '排球少年', name: '排球少年' },
+                    { id: 'Fate', name: 'Fate' },
+                    { id: 'EVA', name: 'EVA' },
+                    { id: '柯南', name: '柯南' },
+                    { id: '其他', name: '其他' }
+                ]);
+
+                const seriesList = computed(() => {
+                    const set = new Set(characters.value.map(c => c.series).filter(Boolean));
+                    return Array.from(set);
+                });
+
+                // 筛选后的角色列表
+                const filteredCharacters = computed(() => {
+                    let result = characters.value;
+                    // 系列筛选
+                    if (activeSeries.value !== 'all') {
+                        if (activeSeries.value === '其他') {
+                            result = result.filter(c => !['排球少年','Fate','EVA','柯南'].includes(c.series));
+                        } else {
+                            result = result.filter(c => c.series === activeSeries.value);
+                        }
+                    }
+                    // 搜索筛选
+                    if (searchQuery.value.trim()) {
+                        const q = searchQuery.value.toLowerCase();
+                        result = result.filter(c => 
+                            c.name.toLowerCase().includes(q) ||
+                            (c.animal && c.animal.toLowerCase().includes(q)) ||
+                            (c.series && c.series.toLowerCase().includes(q))
+                        );
+                    }
+                    return result;
+                });
+
+                // 加载角色数据
+                const loadCharacters = async () => {
+                    await LifeOS.Database.init();
+                    characters.value = await LifeOS.Character.getAll();
+                    // 如果没有任何角色，自动导入预置数据
+                    if (characters.value.length === 0) {
+                        await LifeOS.Character.importPresetData();
+                        characters.value = await LifeOS.Character.getAll();
+                    }
+                };
+
+                // 手动导入预置角色
+                const importPreset = async () => {
+                    const count = await LifeOS.Character.importPresetData();
+                    characters.value = await LifeOS.Character.getAll();
+                    alert(`成功导入 ${count} 位角色！`);
+                };
+
+                // 打开详情弹窗
+                const openDetail = (char) => {
+                    detailChar.value = char;
+                    isEditing.value = true;
+                    // 显式构建 editForm，确保所有字段都有默认值（避免 deepClone 丢失 undefined 字段）
+                    editForm.value = {
+                        id: char.id || '',
+                        name: char.name || '',
+                        series: char.series || '',
+                        jerseyNumber: char.jerseyNumber || '',
+                        grade: char.grade || '',
+                        position: char.position || '',
+                        animal: char.animal || '',
+                        birthday: char.birthday || '',
+                        personalityTags: Array.isArray(char.personalityTags) ? [...char.personalityTags] : [],
+                        dialogueStyle: char.dialogueStyle || '',
+                        priority: typeof char.priority === 'number' ? char.priority : 50,
+                        avatar: char.avatar || '',
+                        starter: char.starter || false,
+                        relations: Array.isArray(char.relations) ? [...char.relations] : []
+                    };
+                };
+
+                const closeDetail = () => {
+                    detailChar.value = null;
+                    editForm.value = {};
+                };
+
+                // 保存编辑
+                const saveChar = async () => {
+                    if (!editForm.value.name.trim()) {
+                        alert('请输入角色姓名');
+                        return;
+                    }
+                    await LifeOS.Character.update(editForm.value.id, editForm.value);
+                    characters.value = await LifeOS.Character.getAll();
+                    closeDetail();
+                };
+
+                // 删除角色
+                const deleteChar = async () => {
+                    if (!confirm(`确定要删除「${detailChar.value.name}」吗？`)) return;
+                    await LifeOS.Character.delete(detailChar.value.id);
+                    characters.value = await LifeOS.Character.getAll();
+                    closeDetail();
+                };
+
+                // 创建新角色
+                const createChar = async () => {
+                    if (!newForm.value.name.trim()) {
+                        alert('请输入角色姓名');
+                        return;
+                    }
+                    await LifeOS.Character.create(newForm.value);
+                    characters.value = await LifeOS.Character.getAll();
+                    newForm.value = { name: '', series: '', animal: '', dialogueStyle: '' };
+                    showCreate.value = false;
+                };
+
+                // 头像上传
+                const handleAvatarUpload = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    try {
+                        const base64 = await LifeOS.Utils.fileToBase64(file);
+                        const compressed = await LifeOS.Utils.compressImage(base64, 400, 0.8);
+                        editForm.value.avatar = compressed;
+                    } catch (e) {
+                        alert('图片处理失败: ' + e.message);
+                    }
+                };
+
+                // 优先级颜色
+                const getPriorityColor = (p) => {
+                    if (!p) return '#94A3B8';
+                    if (p >= 80) return '#EF4444';      // 高优先级 - 红
+                    if (p >= 60) return '#F59E0B';      // 中优先级 - 橙
+                    if (p >= 40) return '#34D399';      // 普通 - 绿
+                    return '#94A3B8';                    // 低 - 灰
+                };
+
+                // 防抖搜索
+                const onSearch = LifeOS.Utils.debounce(() => {}, 200);
+
+                onMounted(loadCharacters);
+
+                return {
+                    characters, searchQuery, activeSeries, detailChar, isEditing,
+                    showCreate, editForm, newForm, seriesTabs, seriesList,
+                    filteredCharacters, importPreset, openDetail, closeDetail,
+                    saveChar, deleteChar, createChar, handleAvatarUpload,
+                    getPriorityColor, onSearch
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
