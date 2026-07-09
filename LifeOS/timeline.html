@@ -6,10 +6,13 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#7DD3FC">
+    <link rel="manifest" href="manifest.webmanifest">
     <title>Life OS — 时间轴</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="js/core.js"></script>
+    <script src="js/pwa.js"></script>
     <style>
         /* ===== 时间轴页面 v1.1 增强样式 ===== */
         
@@ -258,6 +261,28 @@
                     </div>
                 </div>
 
+                <section class="task-sidebar-list timeline-task-dock" data-testid="timeline-task-dock">
+                    <div class="timeline-task-dock-header">
+                        <span>可安排任务</span>
+                        <span>{{ schedulableTasks.length }} 项</span>
+                    </div>
+                    <div v-if="!schedulableTasks.length" class="task-sidebar-empty">当前日期暂无未安排任务</div>
+                    <div v-else class="timeline-task-dock-scroll">
+                        <div
+                            v-for="task in schedulableTasks"
+                            :key="task.id"
+                            class="task-sidebar-item timeline-task-drag-item"
+                            draggable="true"
+                            :data-task-id="task.id"
+                            @dragstart="onTaskDragStart(task, $event)"
+                            @dragend="onTaskDragEnd"
+                        >
+                            <span :class="['task-dot', { completed: task.completed }]"></span>
+                            <span class="task-name">{{ task.title }}</span>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="timeline-container">
                     <div class="timeline-column">
                         <div class="column-header">
@@ -270,7 +295,17 @@
                                 <div v-for="slot in timeSlots" :key="slot.time" class="time-label">{{ slot.time }}</div>
                             </div>
                             <div class="time-grid">
-                                <div v-for="slot in timeSlots" :key="slot.time" class="time-slot" @click="openAddEvent('planned', slot)">
+                                <div
+                                    v-for="slot in timeSlots"
+                                    :key="slot.time"
+                                    class="time-slot"
+                                    :class="{ 'drag-over': dragOverSlotKey === 'planned-' + slot.time }"
+                                    @click="openAddEvent('planned', slot)"
+                                    @dragenter.prevent="onSlotDragEnter('planned', slot, $event)"
+                                    @dragover.prevent="onSlotDragOver('planned', slot, $event)"
+                                    @dragleave="onSlotDragLeave('planned', slot, $event)"
+                                    @drop.prevent.stop="onTaskDrop('planned', slot, $event)"
+                                >
                                     <span class="slot-plus">+</span>
                                 </div>
                                 <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="getCategoryClass(evt.category)" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
@@ -806,11 +841,19 @@
                 const plannedEvents = computed(() => allEvents.value.filter(e => e.type === 'planned'));
                 const actualEvents = computed(() => allEvents.value.filter(e => e.type === 'actual'));
                 const todayTasks = ref([]);
+                const draggingTask = ref(null);
+                const dragOverSlotKey = ref('');
+                const scheduledTaskIds = computed(() => new Set(
+                    plannedEvents.value.map(e => e.taskId).filter(Boolean)
+                ));
+                const schedulableTasks = computed(() => todayTasks.value.filter(task => (
+                    !task.completed && !scheduledTaskIds.value.has(task.id)
+                )));
 
                 const loadEvents = async () => {
                     await LifeOS.Database.init();
                     allEvents.value = await LifeOS.Timeline.getByDate(currentDate.value);
-                    todayTasks.value = await LifeOS.Task.getTodayTasks();
+                    todayTasks.value = await LifeOS.Task.getByDate(currentDate.value);
                     skills.value = await LifeOS.Skill.getAll();
                 };
 
@@ -879,6 +922,96 @@
                 const timeToMinutes = (timeStr) => {
                     const [h, m] = timeStr.split(':').map(Number);
                     return h * 60 + m;
+                };
+                const inferTaskCategory = (task) => {
+                    const raw = (task.category || '').trim().toLowerCase();
+                    if (categories.some(c => c.id === raw)) return raw;
+                    if (/学|read|study|learn/.test(raw)) return 'learning';
+                    if (/工|work|job|project/.test(raw)) return 'work';
+                    if (/休|睡|rest|sleep|life/.test(raw)) return 'rest';
+                    if (/动|跑|sport|run|gym|fit/.test(raw)) return 'sport';
+                    return 'other';
+                };
+                const getSlotRange = (slot) => {
+                    const start = `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`;
+                    const nextHour = slot.minute === 30 ? slot.hour + 1 : slot.hour;
+                    const nextMinute = slot.minute === 30 ? 0 : 30;
+                    return {
+                        startTime: start,
+                        endTime: `${String(nextHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`
+                    };
+                };
+
+                const serializeDraggedTask = (task) => JSON.stringify({
+                    id: task.id,
+                    title: task.title,
+                    description: task.description || '',
+                    category: task.category || ''
+                });
+
+                const onTaskDragStart = (task, event) => {
+                    if (!task || task.completed) {
+                        event.preventDefault();
+                        return;
+                    }
+                    draggingTask.value = task;
+                    if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = 'copy';
+                        event.dataTransfer.setData('application/x-lifeos-task', serializeDraggedTask(task));
+                        event.dataTransfer.setData('text/plain', task.title || '');
+                    }
+                };
+                const onTaskDragEnd = () => {
+                    draggingTask.value = null;
+                    dragOverSlotKey.value = '';
+                };
+                const onSlotDragEnter = (type, slot, event) => {
+                    if (type !== 'planned') return;
+                    dragOverSlotKey.value = `${type}-${slot.time}`;
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+                };
+                const onSlotDragOver = (type, slot, event) => {
+                    if (type !== 'planned') return;
+                    dragOverSlotKey.value = `${type}-${slot.time}`;
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+                };
+                const onSlotDragLeave = (type, slot) => {
+                    if (dragOverSlotKey.value === `${type}-${slot.time}`) {
+                        dragOverSlotKey.value = '';
+                    }
+                };
+                const readDroppedTask = async (event) => {
+                    if (draggingTask.value) return draggingTask.value;
+                    const raw = event.dataTransfer && event.dataTransfer.getData('application/x-lifeos-task');
+                    if (!raw) return null;
+                    try {
+                        const parsed = JSON.parse(raw);
+                        const current = todayTasks.value.find(task => task.id === parsed.id);
+                        if (current) return current;
+                        return parsed;
+                    } catch (err) {
+                        return null;
+                    }
+                };
+                const onTaskDrop = async (type, slot, event) => {
+                    dragOverSlotKey.value = '';
+                    if (type !== 'planned') return;
+                    const task = await readDroppedTask(event);
+                    if (!task || !task.id || !task.title) return;
+                    const range = getSlotRange(slot);
+                    await LifeOS.Timeline.create({
+                        title: task.title,
+                        description: task.description || '',
+                        startTime: range.startTime,
+                        endTime: range.endTime,
+                        type: 'planned',
+                        date: currentDate.value,
+                        category: inferTaskCategory(task),
+                        taskId: task.id
+                    });
+                    draggingTask.value = null;
+                    await loadEvents();
+                    if (viewMode.value === 'month') await loadMonthData();
                 };
 
                 const assignOverlapColumns = (events) => {
@@ -1178,14 +1311,16 @@
                     currentDate, dateInput, viewMode, currentYear, currentMonth, weekdays,
                     isToday, currentDateDisplay, changeDate, goToday, onDateInput, selectDate,
                     changeMonth, monthDays,
-                    timeSlots, plannedEvents, actualEvents, todayTasks, dayStats, processedPlannedEvents, processedActualEvents,
+                    timeSlots, plannedEvents, actualEvents, todayTasks, schedulableTasks, dragOverSlotKey,
+                    dayStats, processedPlannedEvents, processedActualEvents,
                     showEventModal, editingEvent, eventForm, categories,
                     timerRunning, timerDisplay, timerEventName, timerMode, pomodoroPhase, pomodoroProgress, pomodoroPhaseLabel,
                     showPomodoroXPDialog, pomodoroSkillId, pomodoroXP, pomodoroElapsed, pomodoroMinutes, skills,
                     statsPeriod, statsIncludeUnrecorded, statsLoading, statsData, pieChartStyle,
                     getEventStyle, getCategoryClass, getCategoryColor, parseTime,
                     openAddEvent, openEditEvent, closeEventModal, saveEvent, deleteEvent,
-                    startTimer, stopTimer, toggleWeekday, assignPomodoroXP, closePomodoroDialog
+                    startTimer, stopTimer, toggleWeekday, assignPomodoroXP, closePomodoroDialog,
+                    onTaskDragStart, onTaskDragEnd, onSlotDragEnter, onSlotDragOver, onSlotDragLeave, onTaskDrop
                 };
             }
         }).mount('#app');

@@ -3,10 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#7DD3FC">
+    <link rel="manifest" href="manifest.webmanifest">
     <title>Life OS — 设置</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="js/core.js"></script>
+    <script src="js/pwa.js"></script>
     <style>
         /* ===== 设置页面专属样式 ===== */
         .settings-container { display: flex; flex-direction: column; gap: 20px; max-width: 700px; margin: 0 auto; }
@@ -378,36 +381,16 @@
 
                     try {
                         const model = apiForm.value.model === 'custom' ? apiForm.value.customModel : apiForm.value.model;
-                        const response = await fetch(`${apiForm.value.baseUrl}/chat/completions`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${apiForm.value.apiKey}`
-                            },
-                            body: JSON.stringify({
-                                model: model || 'gpt-4o-mini',
-                                messages: [{ role: 'user', content: 'Hi' }],
-                                max_tokens: 5
-                            })
+                        const result = await LifeOS.AIClient.testConnection({
+                            baseUrl: apiForm.value.baseUrl,
+                            apiKey: apiForm.value.apiKey,
+                            model: model || 'gpt-4o-mini'
                         });
-
-                        const now = new Date();
-                        const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-
-                        if (response.ok) {
-                            testResult.value = { type: 'success', message: '✅ 连接成功！API 配置正确可用。' };
-                            logApiCall({ time: timeStr, success: true, endpoint: '/chat/completions', status: `${response.status} OK` });
-                        } else {
-                            const err = await response.text().catch(() => '');
-                            testResult.value = { type: 'error', message: `❌ 连接失败 (${response.status}): ${err.slice(0, 100)}` };
-                            logApiCall({ time: timeStr, success: false, endpoint: '/chat/completions', status: `${response.status} ${response.statusText}` });
-                        }
+                        testResult.value = { type: 'success', message: `✅ 连接成功！模型 ${result.model || model} 可用。` };
                     } catch (err) {
-                        testResult.value = { type: 'error', message: `❌ 网络错误: ${err.message}` };
-                        const now = new Date();
-                        const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-                        logApiCall({ time: timeStr, success: false, endpoint: '/chat/completions', status: 'Network Error' });
+                        testResult.value = { type: 'error', message: `❌ 连接失败: ${err.message}` };
                     }
+                    apiHistory.value = await LifeOS.Settings.get('apiHistory', []);
                     testing.value = false;
                 };
 

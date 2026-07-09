@@ -3,10 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#7DD3FC">
+    <link rel="manifest" href="manifest.webmanifest">
     <title>Life OS — 任务</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="js/core.js"></script>
+    <script src="js/pwa.js"></script>
 </head>
 <body>
     <div id="app">
@@ -55,11 +58,6 @@
                         {{ f.name }}
                     </button>
                 </div>
-                <div class="filter-group">
-                    <label>
-                        <input type="checkbox" v-model="showCompletedInQuadrant"> 在四象限中显示已完成任务
-                    </label>
-                </div>
             </section>
 
             <!-- 四象限布局 -->
@@ -79,10 +77,28 @@
                             @click="openDetail(task)"
                         >
                             <div class="task-card-header">
-                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                <div
+                                    class="task-checkbox"
+                                    role="button"
+                                    tabindex="0"
+                                    :title="getCompleteActionText(task)"
+                                    :aria-label="getCompleteActionText(task)"
+                                    @click.stop="toggleComplete(task)"
+                                    @keydown.enter.stop.prevent="toggleComplete(task)"
+                                    @keydown.space.stop.prevent="toggleComplete(task)"
+                                >
                                     <span v-if="task.completed">✓</span>
                                 </div>
                                 <div class="task-card-title">{{ task.title }}</div>
+                                <div class="task-card-actions">
+                                    <button
+                                        class="task-action-btn"
+                                        :class="task.completed ? 'undo' : 'complete'"
+                                        @click.stop="toggleComplete(task)"
+                                    >
+                                        {{ getCompleteActionText(task) }}
+                                    </button>
+                                </div>
                             </div>
                             <div v-if="task.deadline" class="task-countdown">
                                 <div class="countdown-bar">
@@ -112,10 +128,28 @@
                             @click="openDetail(task)"
                         >
                             <div class="task-card-header">
-                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                <div
+                                    class="task-checkbox"
+                                    role="button"
+                                    tabindex="0"
+                                    :title="getCompleteActionText(task)"
+                                    :aria-label="getCompleteActionText(task)"
+                                    @click.stop="toggleComplete(task)"
+                                    @keydown.enter.stop.prevent="toggleComplete(task)"
+                                    @keydown.space.stop.prevent="toggleComplete(task)"
+                                >
                                     <span v-if="task.completed">✓</span>
                                 </div>
                                 <div class="task-card-title">{{ task.title }}</div>
+                                <div class="task-card-actions">
+                                    <button
+                                        class="task-action-btn"
+                                        :class="task.completed ? 'undo' : 'complete'"
+                                        @click.stop="toggleComplete(task)"
+                                    >
+                                        {{ getCompleteActionText(task) }}
+                                    </button>
+                                </div>
                             </div>
                             <div v-if="task.deadline" class="task-countdown">
                                 <div class="countdown-bar">
@@ -145,10 +179,28 @@
                             @click="openDetail(task)"
                         >
                             <div class="task-card-header">
-                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                <div
+                                    class="task-checkbox"
+                                    role="button"
+                                    tabindex="0"
+                                    :title="getCompleteActionText(task)"
+                                    :aria-label="getCompleteActionText(task)"
+                                    @click.stop="toggleComplete(task)"
+                                    @keydown.enter.stop.prevent="toggleComplete(task)"
+                                    @keydown.space.stop.prevent="toggleComplete(task)"
+                                >
                                     <span v-if="task.completed">✓</span>
                                 </div>
                                 <div class="task-card-title">{{ task.title }}</div>
+                                <div class="task-card-actions">
+                                    <button
+                                        class="task-action-btn"
+                                        :class="task.completed ? 'undo' : 'complete'"
+                                        @click.stop="toggleComplete(task)"
+                                    >
+                                        {{ getCompleteActionText(task) }}
+                                    </button>
+                                </div>
                             </div>
                             <div v-if="task.deadline" class="task-countdown">
                                 <div class="countdown-bar">
@@ -178,10 +230,28 @@
                             @click="openDetail(task)"
                         >
                             <div class="task-card-header">
-                                <div class="task-checkbox" @click.stop="toggleComplete(task)">
+                                <div
+                                    class="task-checkbox"
+                                    role="button"
+                                    tabindex="0"
+                                    :title="getCompleteActionText(task)"
+                                    :aria-label="getCompleteActionText(task)"
+                                    @click.stop="toggleComplete(task)"
+                                    @keydown.enter.stop.prevent="toggleComplete(task)"
+                                    @keydown.space.stop.prevent="toggleComplete(task)"
+                                >
                                     <span v-if="task.completed">✓</span>
                                 </div>
                                 <div class="task-card-title">{{ task.title }}</div>
+                                <div class="task-card-actions">
+                                    <button
+                                        class="task-action-btn"
+                                        :class="task.completed ? 'undo' : 'complete'"
+                                        @click.stop="toggleComplete(task)"
+                                    >
+                                        {{ getCompleteActionText(task) }}
+                                    </button>
+                                </div>
                             </div>
                             <div v-if="task.deadline" class="task-countdown">
                                 <div class="countdown-bar">
@@ -204,6 +274,20 @@
                 <div class="modal-header">
                     <h3>{{ editingTask.id ? '编辑任务' : '添加任务' }}</h3>
                     <button class="close-btn" @click="closeTaskModal">✕</button>
+                </div>
+                <div v-if="editingTask.id" class="task-status-bar">
+                    <div class="task-status-info">
+                        <span class="status-label">当前状态</span>
+                        <span :class="['status-badge', editingTask.completed ? 'completed' : 'pending']">
+                            {{ editingTask.completed ? '已完成' : '未完成' }}
+                        </span>
+                        <span v-if="editingTask.completedAt" class="completed-at">
+                            {{ formatDate(editingTask.completedAt) }}
+                        </span>
+                    </div>
+                    <button v-if="editingTask.completed" class="task-action-btn undo" @click="undoCompleteFromModal">
+                        撤回完成
+                    </button>
                 </div>
                 <div class="form-fields">
                     <div class="form-group">
@@ -331,7 +415,6 @@
                 const showFilter = ref(false);
                 const dateFilter = ref('today');
                 const statusFilter = ref('all');
-                const showCompletedInQuadrant = ref(false);
                 const showTaskModal = ref(false);
                 const editingTask = ref({});
                 const taskForm = ref({ title: '', description: '', deadline: '', priority: 5, quadrant: '', category: '' });
@@ -358,9 +441,52 @@
                     { id: 'not-urgent-not-important', label: '不重要·不紧急', icon: '⚪' }
                 ];
 
+                const getRecurringGroupKey = (task) => [
+                    task.date || '',
+                    task.title || '',
+                    task.deadline || '',
+                    task.quadrant || '',
+                    task.category || ''
+                ].join('|');
+
+                const getTaskTime = (task) => new Date(task.updatedAt || task.createdAt || 0).getTime();
+
+                const pickVisibleDuplicate = (current, candidate) => {
+                    if (!!current.completed !== !!candidate.completed) {
+                        return current.completed ? current : candidate;
+                    }
+                    return getTaskTime(candidate) > getTaskTime(current) ? candidate : current;
+                };
+
+                const dedupeRecurringTasks = (tasks) => {
+                    const visibleTasks = [];
+                    const recurringIndex = new Map();
+                    tasks.forEach(task => {
+                        if (!task.isRecurring || !task.recurringRule || !task.date || !task.title) {
+                            visibleTasks.push(task);
+                            return;
+                        }
+                        const key = getRecurringGroupKey(task);
+                        const existing = recurringIndex.get(key);
+                        if (!existing) {
+                            recurringIndex.set(key, { task, index: visibleTasks.length });
+                            visibleTasks.push(task);
+                            return;
+                        }
+                        const picked = pickVisibleDuplicate(existing.task, task);
+                        if (picked !== existing.task) {
+                            visibleTasks[existing.index] = picked;
+                            existing.task = picked;
+                        }
+                    });
+                    return visibleTasks;
+                };
+
+                const visibleTasks = computed(() => dedupeRecurringTasks(allTasks.value));
+
                 // 筛选后的任务
                 const filteredTasks = computed(() => {
-                    let result = allTasks.value;
+                    let result = visibleTasks.value;
                     const today = LifeOS.Utils.formatDate();
                     // 日期筛选
                     if (dateFilter.value === 'today') {
@@ -380,14 +506,14 @@
 
                 const todayTasks = computed(() => {
                     const today = LifeOS.Utils.formatDate();
-                    return allTasks.value.filter(t => t.date === today);
+                    return visibleTasks.value.filter(t => t.date === today);
                 });
 
                 // 四象限分组
-                const q1Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-important' && (showCompletedInQuadrant.value || !t.completed)));
-                const q2Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'important-not-urgent' && (showCompletedInQuadrant.value || !t.completed)));
-                const q3Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-not-important' && (showCompletedInQuadrant.value || !t.completed)));
-                const q4Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'not-urgent-not-important' && (showCompletedInQuadrant.value || !t.completed)));
+                const q1Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-important'));
+                const q2Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'important-not-urgent'));
+                const q3Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-not-important'));
+                const q4Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'not-urgent-not-important'));
 
                 // 加载任务
                 const loadTasks = async () => {
@@ -396,11 +522,22 @@
                     const allTasksData = await LifeOS.Task.getAll();
                     
                     // 为循环任务创建今日副本（如果不存在）
-                    // 只处理未完成的循环任务，已完成的不创建今日副本
+                    // 只从过去的未完成循环任务补今天，避免明天副本反向生成今天的重复任务
                     for (const task of allTasksData) {
-                        if (task.isRecurring && task.recurringRule && task.date !== today && !task.completed) {
+                        if (task.isRecurring && task.recurringRule && task.date && task.date < today && !task.completed) {
                             // 检查今日是否已有该任务
-                            const todayTasks = allTasksData.filter(t => t.date === today && t.title === task.title && !t.completed);
+                            const todayTasks = allTasksData.filter(t => (
+                                t.date === today &&
+                                t.isRecurring &&
+                                t.recurringRule &&
+                                getRecurringGroupKey(t) === [
+                                    today,
+                                    task.title || '',
+                                    task.deadline || '',
+                                    task.quadrant || '',
+                                    task.category || ''
+                                ].join('|')
+                            ));
                             if (todayTasks.length === 0) {
                                 // 创建今日副本
                                 const newTask = {
@@ -409,12 +546,14 @@
                                     date: today,
                                     completed: false,
                                     completedAt: null,
+                                    generatedFromTaskId: task.id,
+                                    recurringInstanceDate: today,
                                     createdAt: LifeOS.Utils.now(),
                                     updatedAt: LifeOS.Utils.now()
                                 };
                                 delete newTask.completedAt;
-                                await LifeOS.Task.create(newTask);
-                                allTasksData.push(newTask);
+                                const createdTask = await LifeOS.Task.create(newTask);
+                                allTasksData.push(createdTask);
                             }
                         }
                     }
@@ -425,8 +564,7 @@
 
                 // 更新完成率
                 const updateCompletionRate = () => {
-                    const today = LifeOS.Utils.formatDate();
-                    const todayTasksList = allTasks.value.filter(t => t.date === today);
+                    const todayTasksList = todayTasks.value;
                     if (!todayTasksList.length) {
                         completionRate.value = 0;
                         return;
@@ -438,14 +576,27 @@
                 // 切换完成状态（带确认）
                 const toggleComplete = async (task) => {
                     const action = task.completed ? '撤回完成' : '标记完成';
-                    if (!confirm(`确定${action}「${task.title}」？`)) return;
+                    if (!confirm(`确定${action}「${task.title}」？`)) return false;
                     const prevRate = completionRate.value;
                     await LifeOS.Task.toggleComplete(task.id);
                     await loadTasks();
                     const newRate = completionRate.value;
                     // 检测是否跨越阈值
                     checkEncourageTrigger(prevRate, newRate);
+                    return true;
                 };
+
+                const undoCompleteFromModal = async () => {
+                    const success = await toggleComplete(editingTask.value);
+                    if (success) closeTaskModal();
+                };
+
+                const formatDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    return LifeOS.Utils.formatDate(dateStr);
+                };
+
+                const getCompleteActionText = (task) => task.completed ? '撤回完成' : '标记完成';
 
                 // 检测激励触发
                 const checkEncourageTrigger = async (prevRate, newRate) => {
@@ -614,15 +765,17 @@
                 onMounted(loadTasks);
 
                 return {
-                    allTasks, showFilter, dateFilter, statusFilter, showCompletedInQuadrant,
+                    allTasks, showFilter, dateFilter, statusFilter,
                     showTaskModal, editingTask, taskForm, completionRate,
                     showEncourage, encourageChar, encourageMessage,
                     dateFilters, statusFilters, quadrantOptions,
-                    filteredTasks, todayTasks,
+                    visibleTasks, filteredTasks, todayTasks,
                     q1Tasks, q2Tasks, q3Tasks, q4Tasks,
                     toggleComplete, openCreate, openDetail, closeTaskModal,
                     saveTask, deleteTask, closeEncourage,
-                    getDeadlinePercent, getDeadlineColor, getDeadlineText
+                    undoCompleteFromModal, getCompleteActionText,
+                    getDeadlinePercent, getDeadlineColor, getDeadlineText,
+                    formatDate
                 };
             }
         }).mount('#app');

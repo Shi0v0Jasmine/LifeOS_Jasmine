@@ -1186,6 +1186,11 @@ body::before {
     background: rgba(125, 211, 252, 0.1);
 }
 
+.time-slot.drag-over {
+    background: rgba(52, 211, 153, 0.18);
+    box-shadow: inset 0 0 0 2px rgba(52, 211, 153, 0.35);
+}
+
 .time-slot:hover .slot-plus {
     opacity: 1;
 }
@@ -1290,6 +1295,32 @@ body::before {
     padding: 8px 12px;
 }
 
+.timeline-task-dock {
+    margin-bottom: 12px;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+}
+
+.timeline-task-dock-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 4px 8px;
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.timeline-task-dock-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
 .task-sidebar-empty {
     padding: 12px 0;
     text-align: center;
@@ -1307,6 +1338,18 @@ body::before {
 
 .task-sidebar-item:hover {
     background: var(--bg-hover);
+}
+
+.timeline-task-drag-item {
+    flex: 0 0 auto;
+    max-width: 220px;
+    border: 1px solid var(--border-light);
+    background: rgba(255, 255, 255, 0.45);
+    cursor: grab;
+}
+
+.timeline-task-drag-item:active {
+    cursor: grabbing;
 }
 
 .task-dot {
@@ -1611,6 +1654,102 @@ body::before {
 .countdown-text {
     font-family: var(--font-sans);
     font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+/* ---- 任务卡片动作按钮 ---- */
+.task-card-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-card-actions {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.task-action-btn {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: transparent;
+    white-space: nowrap;
+}
+
+.task-action-btn.complete {
+    color: var(--color-success);
+    border-color: rgba(34, 197, 94, 0.3);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.task-action-btn.complete:hover {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: var(--color-success);
+}
+
+.task-action-btn.undo {
+    color: var(--color-urgent);
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.task-action-btn.undo:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: var(--color-urgent);
+}
+
+/* ---- 弹窗状态条 ---- */
+.task-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(248, 250, 252, 0.8);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+}
+
+.task-status-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.status-label {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.status-badge {
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.status-badge.pending {
+    color: var(--color-warning);
+    background: rgba(251, 191, 36, 0.15);
+}
+
+.status-badge.completed {
+    color: var(--color-success);
+    background: rgba(34, 197, 94, 0.15);
+}
+
+.completed-at {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 

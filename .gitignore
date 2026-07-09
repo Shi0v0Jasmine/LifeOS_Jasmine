@@ -1,4 +1,4 @@
-.workbuddy/
+﻿.workbuddy/
 chat-history.md
 .DS_Store
 Thumbs.db
@@ -16,3 +16,7 @@ build/
 playwright-report/
 test-results/
 screenshots/
+
+# User data (backend persistence)
+LifeOS/data/lifeos-db.json
+LifeOS/data/backups/
