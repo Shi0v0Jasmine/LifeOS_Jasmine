@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="LifeOS">
+  <defs>
+    <linearGradient id="sky" x1="96" y1="64" x2="416" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7DD3FC"/>
+      <stop offset="0.56" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#FDE68A"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#F8FAFC"/>
+  <circle cx="262" cy="248" r="172" fill="url(#sky)" opacity="0.9" filter="url(#soft)"/>
+  <circle cx="262" cy="248" r="158" fill="url(#sky)" opacity="0.82"/>
+  <path d="M164 278c54-118 154-144 226-82-76-20-124 18-144 80 34-30 74-38 118-24-66 20-104 68-114 144-46-18-76-58-86-118Z" fill="#0F172A" opacity="0.72"/>
+  <path d="M157 160h80v30h-47v122h-33V160Zm214 38h33v154h-33V198Z" fill="#FFFFFF" opacity="0.94"/>
+  <circle cx="387" cy="160" r="19" fill="#FFFFFF" opacity="0.94"/>
+</svg>

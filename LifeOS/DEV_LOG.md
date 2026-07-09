@@ -1,10 +1,10 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v1.1（开发中）  
-> **最后更新**: 【2026-07-08 10:53】  
+> **当前版本**: v1.2（开发中）
+> **最后更新**: 【2026-07-09 10:35】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
-> **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS_v1.md`
+> **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
 
 ---
 
@@ -16,9 +16,10 @@
 |----|------|
 | 前端框架 | Vue 3.4.21 CDN 全局版 (`vue.global.js`) |
 | 构建工具 | **无** — 纯 HTML/CSS/JS，无 webpack/vite |
-| 运行方式 | `file://` 协议，双击 HTML 文件打开 |
+| 后端服务 | Node.js + Express（可选本机后端） |
+| 运行方式 | 推荐 `node server.js` → `http://localhost:3000`；也支持 `file://` 或 Python 静态服务器降级 |
 | 样式 | 纯 CSS + CSS 变量（水彩/霍格沃茨主题） |
-| 数据存储 | IndexedDB（`LifeOSDB`，10 个 Object Store） |
+| 数据存储 | IndexedDB（`LifeOSDB`，10 个 Object Store）+ 本机 JSON 文件（`LifeOS/data/lifeos-db.json`） |
 | 模块系统 | **无 ES Module** — 全局 IIFE + `window.LifeOS` |
 
 ### 1.2 核心约束（⚠️ 必须遵守）
@@ -28,7 +29,7 @@
 3. **禁用 ES Module `<script type="module">`** — 浏览器安全策略禁止本地 import
 4. **日期格式统一** — 全程使用 `YYYY-MM-DD` 字符串，避免 `new Date()` 时区问题
 5. **头像存储** — base64 压缩（400px, JPEG 0.8）存入 IndexedDB
-6. **所有数据本地存储** — 不上传服务器
+6. **所有数据本地存储** — 不上传外部服务器；本机后端只写入本地 JSON 文件
 
 ---
 
@@ -45,16 +46,22 @@ LifeOS/
 ├── characters.html     # 角色库 (21KB)
 ├── settings.html       # 设置 (29KB)
 ├── test.html           # 测试页面 (2KB)
+├── manifest.webmanifest # PWA 安装配置
+├── sw.js               # Service Worker 离线缓存
+├── ../server.js        # v1.2 本机 Express 后端
+├── ../package.json     # Node 启动配置
+├── ../tests/           # 数据层回归测试
 ├── css/
 │   └── style.css       # 全局样式 (40KB)
 ├── js/
 │   ├── core.js         # 数据层：DAO + 预置角色 (79KB)
+│   ├── pwa.js          # PWA 注册与安装提示状态
 │   ├── db.js           # IndexedDB 底层封装 (6KB)
 │   ├── utils.js        # 工具函数 (4KB)
 │   └── components/
 │       └── Sidebar.js  # 侧边栏组件
 ├── guide/              # 开发指南 step-00 ~ step-10
-└── PRD_LifeOS_v1.md    # 产品需求文档
+└── ../PRD_LifeOS.md    # 产品需求文档
 ```
 
 ---
@@ -98,6 +105,48 @@ LifeOS/
 | 回顾保存元数据 | core.js | `Review.save()` 二次保存保留原始 `createdAt`，只刷新 `updatedAt` |
 | 数据层回归测试 | tests/core-data.test.js | 新增纯 Node + 内存 IndexedDB 测试，覆盖上述数据层风险 |
 
+### ✅ v1.1 任务管理重复显示修复【2026-07-08 15:37】
+
+| 修复项 | 文件 | 说明 |
+|------|------|------|
+| 已完成筛选入口统一 | tasks.html | 删除「四象限中显示已完成任务」复选框，保留状态筛选里的「已完成」，四象限显示直接服从状态筛选 |
+| 循环任务完成后重复显示 | tasks.html | 只从过去日期的未完成循环任务补今天副本，避免完成后生成的明日副本反向补成今日重复任务；同日同循环任务显示时去重，优先展示已完成项 |
+| 撤回完成 | core.js + tasks.html | 完成按钮支持「撤回完成」提示和键盘触发；撤回循环任务完成时移除本次完成自动生成的下一日副本 |
+| 回归测试 | tests/core-data.test.js | 新增循环任务完成/撤回测试，覆盖生成下一日副本与撤回删除副本 |
+| 验证 | 本地服务 + Browser | `node tests\core-data.test.js` 全部通过；Browser 验证完成后今日只显示 1 张完成卡，测试数据已清理 |
+
+### ✅ v1.2 本机后端持久化验证【2026-07-08 15:44】
+
+| 项目 | 文件 | 说明 |
+|------|------|------|
+| Express 后端 | server.js | 静态托管 `LifeOS/`，提供 `/api/db`、`/api/db/:store`、`/api/status`、`/api/backups` |
+| JSON 文件持久化 | LifeOS/data/lifeos-db.json | 后端启动时自动初始化；保存全量数据库快照；已加入 `.gitignore`，避免提交用户数据 |
+| 自动备份 | LifeOS/data/backups/ | 写入前自动备份，最多保留最近 20 份；目录已加入 `.gitignore` |
+| 前端同步 | LifeOS/js/core.js | `BackendSync` 在 HTTP(S) 环境下启用，监听 `db.put()` / `db.delete()` 并 debounce 保存到后端 |
+| 启动脚本 | start.bat | 优先使用 Node.js 启动 `http://localhost:3000`；无 Node.js 时降级为 Python 静态服务器 |
+| 验证 | API + 静态页面 | `/api/status`、`/api/db`、`POST /api/db`、`GET /api/db/timeline`、`/index.html` 均验证通过；测试数据已清理 |
+
+### ✅ v1.2 PRD 功能补全【2026-07-09 10:35】
+
+| 功能 | 文件 | 说明 |
+|------|------|------|
+| F-006 PWA 配置 | `manifest.webmanifest` + `sw.js` + `js/pwa.js` + 全部 HTML | 新增 PWA manifest、SVG app icon、Service Worker 静态缓存、后端 GET 缓存、CDN Vue 运行时缓存；`file://` 下自动降级不注册 |
+| F-021 拖拽任务到时间轴 | `timeline.html` + `css/style.css` | 时间轴日视图新增当前日期未完成任务条；任务卡片可拖到预计列 30 分钟时间格，自动创建标题一致、关联 `taskId` 的预计事件 |
+| F-084 通用 AI 客户端封装 | `js/core.js` + `settings.html` | 新增 `LifeOS.AIClient`，统一读取 Base URL/API Key/模型，封装 OpenAI-compatible `/chat/completions` 请求、错误归一、重试、超时、文本提取和调用历史；设置页测试连接改为调用该客户端 |
+| 回归测试 | `tests/core-data.test.js` | 新增 AIClient 请求格式、调用历史、重试与缺配置校验测试；数据层测试总数 8 项 |
+| 验证 | Node + 本地服务 + Browser | `node --check` 覆盖核心/PWA/SW；`node tests\core-data.test.js` 8 项通过；Browser 验证时间轴页渲染任务拖拽条、manifest 和 `js/pwa.js` 已挂载 |
+
+### ✅ v1.1 任务管理「撤回完成」UI 显性化【2026-07-08 16:00】
+
+| 修复项 | 文件 | 说明 |
+|------|------|------|
+| 卡片右侧动作按钮 | tasks.html | 已完成任务显示红色「撤回完成」标签按钮；未完成任务显示绿色「完成」按钮；点击均触发确认弹窗 |
+| 弹窗状态条 | tasks.html | 编辑弹窗顶部新增状态信息：「当前状态」徽章（已完成/未完成）、完成时间戳；已完成任务额外显示「撤回完成」按钮 |
+| 弹窗撤回联动 | tasks.html | 点击弹窗内「撤回完成」→ 确认后自动关闭弹窗，刷新页面数据；依赖 `toggleComplete` 返回 `true`/`false` 控制流 |
+| 辅助方法 | tasks.html | 新增 `undoCompleteFromModal`、`formatDate` 方法；暴露到 `return` 供模板使用 |
+| 样式系统 | css/style.css | 新增 `.task-card-actions`、`.task-action-btn`（complete/undo 双态）、`.task-status-bar`、`.status-badge` 等 20+ 条规则，延续水彩主题 |
+| 验证 | 本地服务 + Browser + 测试 | `node tests\core-data.test.js` 5 项全部通过；Browser 验证卡片右侧按钮、弹窗状态条、确认弹窗、完成率刷新均正常；测试数据已清理 |
+
 ### ⬜ v1.1 待验证/可能有 bug
 
 | 功能 | 文件 | 状态 | 备注 |
@@ -112,7 +161,6 @@ LifeOS/
 
 | 功能 | 说明 |
 |------|------|
-| 时间轴事件拖拽 | F-021，Drag & Drop API |
 | 时间微调 ±15min | F-022 |
 | 任务与时间轴联动 | F-027，任务完成同步更新时间轴 |
 | 四象限散点图 | F-032，ECharts |
@@ -141,6 +189,7 @@ await LifeOS.Database.init(); // 幂等，多次调用返回同一 Promise
 | `LifeOS.Skill` | `create(skill)`, `update(id, updates)`, `delete(id)`, `getAll()`, `addXP(id, amount)`, `addNote(note)` | 技能树，XP 升级算法 1.5x |
 | `LifeOS.Character` | `create(char)`, `update(id, updates)`, `delete(id)`, `getAll()`, `getByPriority()`, `importPresetData()` | 角色库，50+ 预置数据 |
 | `LifeOS.Settings` | `get(key, defaultValue)`, `set(key, value)`, `getAll()` | key-value 配置存储 |
+| `LifeOS.AIClient` | `chat(options)`, `complete(prompt, options)`, `testConnection(overrides)`, `extractText(response)`, `getConfig(overrides)` | 通用 OpenAI-compatible AI 客户端 |
 | `LifeOS.ExportImport` | `export()`, `importFile(file, strategy)` | strategy: 'merge' / 'overwrite' |
 
 ### 4.3 工具函数（`LifeOS.Utils`）
@@ -182,9 +231,13 @@ LifeOS.Utils.markdownToHtml(md)     // 简易 Markdown 转 HTML
 | `TimelineStore.create()` | 新增 `repeatRule`, `repeatEndDate`, `isRecurring` 字段 | 支持循环事件 |
 | `TimelineStore.update()` | 同步 `isRecurring` | `repeatRule` 变更时同步更新循环状态 |
 | `TimelineStore.getByDate()` | 新增重复事件自动展开逻辑 | 检测 `isRecurring`，匹配规则后生成虚拟实例（虚拟 ID = `originalId_date`），且不向开始日期前展开 |
+| `TaskStore.create()` | 保留传入 `id` 与循环实例来源字段 | 循环任务副本可记录 `generatedFromTaskId` / `recurringInstanceDate` |
+| `TaskStore.toggleComplete()` | 支持撤回完成清理副本 | 完成循环任务时标记下一日副本来源；撤回完成时删除本次生成的下一日待办副本 |
 | `HabitStore.getStreak()` | 修正连续打卡计算 | 忽略未来记录，今天明确未完成时中断 streak |
 | `ReviewStore.save()` | 保留创建时间 | 二次保存保留已有 `createdAt` |
 | `Database.reset()` | 新增方法 | 清空所有 Store 数据，保留结构 |
+| `BackendSync` | 新增后端同步 | HTTP(S) 环境下连接本机 Express API，支持启动恢复与变更保存 |
+| `AIClient` | 新增通用 AI 客户端 | 统一处理 OpenAI-compatible 请求、错误、重试、超时、历史记录和文本提取 |
 
 ### 5.5 测试记录【2026-07-08 10:53】
 
@@ -195,6 +248,45 @@ node tests\core-data.test.js
 结果：4 项数据层回归测试全部通过。
 
 渲染健康检查：通过本地服务打开 `http://localhost:8080/timeline.html`，确认页面标题为 `Life OS — 时间轴`，日视图正常显示，控制台无 error/warn。
+
+### 5.6 测试记录【2026-07-08 15:37】
+
+```bash
+node --check LifeOS/js/core.js
+node tests\core-data.test.js
+```
+
+结果：5 项数据层回归测试全部通过。Browser 验证 `http://localhost:3000/tasks.html`：长期循环任务完成后今日只显示 1 张完成卡，完成按钮提示为「撤回完成」；QA 数据已从后端 JSON 清理。
+
+### 5.7 后端验证记录【2026-07-08 15:44】
+
+```bash
+node tests\core-data.test.js
+node server.js
+```
+
+验证结果：
+- `GET /api/status` 返回 `ok: true`
+- `GET /api/db` 返回完整数据库结构
+- `POST /api/db` 后 `GET /api/db/timeline` 可读回写入记录
+- `GET /index.html` 返回 `Life OS — 仪表盘`，包含 Vue 与 `js/core.js`
+- 验证过程中生成的 `lifeos-db.json` 与备份文件已清理；运行时生成的数据文件由 `.gitignore` 排除
+
+### 5.8 PRD 功能补全测试记录【2026-07-09 10:35】
+
+```bash
+node --check LifeOS\js\core.js
+node --check LifeOS\js\pwa.js
+node --check LifeOS\sw.js
+node tests\core-data.test.js
+node server.js
+```
+
+验证结果：
+- 8 项数据层/AIClient 回归测试全部通过
+- `GET /api/status`、`GET /manifest.webmanifest`、`GET /sw.js` 均返回 200
+- Browser 打开 `http://localhost:3000/timeline.html`，页面标题正常，任务拖拽条渲染，双列时间格共 96 个
+- 自动化坐标拖拽未能触发浏览器原生 HTML5 Drag & Drop，已用源码契约检查确认拖拽源、drop 事件、DataTransfer payload 与 `taskId` 创建字段均存在
 
 ### 5.2 `timeline.html` 变更（最复杂，当前有 bug）
 
@@ -208,6 +300,7 @@ node tests\core-data.test.js
 | 番茄钟 XP 弹窗 | 技能选择 + XP 数值（25/50/100/自定义） |
 | 重叠事件并排 | `assignOverlapColumns()` 贪心算法 + CSS 变量 `--event-left`/`--event-width` |
 | 日统计条 | 5 张卡片（预计项/实际项/总时长/主要类别/完成率） |
+| 拖拽任务排期 | 当前日期未完成任务条 + HTML5 Drag & Drop 到预计列时间格 |
 
 ### 5.3 `habits.html` 变更
 
@@ -234,6 +327,7 @@ node tests\core-data.test.js
 1. **浏览器缓存** — `file://` 下浏览器会缓存 HTML/JS/CSS，修改后必须 **Ctrl+F5 强制刷新**
 2. **Vue Proxy 序列化** — IndexedDB `put()` 不能直接存 Vue 响应式对象，必须用 `JSON.parse(JSON.stringify())` 深拷贝
 3. **`file://` 编码问题** — 确保 `<meta charset="UTF-8">` 在 `<head>` 最前面，否则中文可能乱码
+4. **PowerShell npm 脚本策略** — Windows PowerShell 可能拦截 `npm.ps1`，可使用 `node server.js` 或 `npm.cmd start`
 
 ### ⚠️ 当前潜在 bug
 
@@ -243,6 +337,9 @@ node tests\core-data.test.js
 | 统计视图数据刷新 | timeline.html | 低 | `statsCache` 按 period 缓存，切换日期时未完全清空 |
 | 番茄钟弹窗状态残留 | timeline.html | 低 | `onMounted` 已加 `showPomodoroXPDialog.value = false`，但仍需验证 |
 | 时间轴事件图片 | timeline.html | 低 | `images` 字段已存在于数据模型，但 UI 未展示 |
+| 后端恢复竞态 | core.js | 中 | `BackendSync.restore()` 在 `Database.init()` 后异步执行，页面可能先渲染空 IndexedDB，恢复后未统一通知页面刷新 |
+| 本地/后端冲突策略 | core.js + server.js | 中 | 当前 merge 按 id/key/date 覆盖，尚未基于 `updatedAt` 做冲突决策 |
+| 后端 API 鉴权 | server.js | 低 | 当前定位本机使用，无鉴权；若暴露到局域网/公网需加鉴权和更严格校验 |
 
 ### ⚠️ 开发注意事项
 
@@ -261,7 +358,20 @@ node tests\core-data.test.js
 2. **验证 review.html** — GRAI 分析生成、保存回顾、历史加载
 3. **修复任何发现的 bug** — 使用浏览器 DevTools Console 查看 JS 错误
 
-### 如果开始 v1.2 开发
+### 如果继续 v1.2 后端收尾
+
+1. **解决 BackendSync 恢复竞态** — 恢复完成后触发页面级 reload 或事件通知，让 UI 重读数据
+2. **增加冲突策略** — merge 时优先使用 `updatedAt` 较新的记录，避免后端旧数据覆盖本地新数据
+3. **补充 API 校验** — 限制 store 白名单、校验备份文件名、明确错误码
+4. **补齐文档与启动体验** — README/PRD/DEV_LOG 已补充，后续可加入一键 smoke test
+
+### 如果继续 v1.2 功能补全收尾
+
+1. **接入 AI 使用点** — 将 GRAI 分析、AI 任务拆解、学习关键词提取逐步改为调用 `LifeOS.AIClient`
+2. **补强拖拽自动化测试** — 引入能稳定触发 HTML5 Drag & Drop 的浏览器测试工具或专用测试页
+3. **PWA 离线数据策略** — 目前缓存静态资源和后端 GET 快照；后续可补最近 30 天数据的显式预热策略
+
+### 如果开始 v1.3 / v2.0 开发
 
 优先级从高到低：
 
@@ -288,7 +398,7 @@ node tests\core-data.test.js
 
 | 文档 | 路径 |
 |------|------|
-| PRD | `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS_v1.md` |
+| PRD | `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md` |
 | Bug Report | `D:\FUN_VibeCoding\LifeOS\LifeOS\BUG_REPORT_v1.1.md` |
 | 开发指南 | `D:\FUN_VibeCoding\LifeOS\LifeOS\guide\step-*.md` |
 

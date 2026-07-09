@@ -1,0 +1,21 @@
+{
+  "name": "LifeOS",
+  "short_name": "LifeOS",
+  "description": "Personal daily tracking, tasks, timeline, habits, reviews, and learning logs.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#F8FAFC",
+  "theme_color": "#7DD3FC",
+  "orientation": "any",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    {
+      "src": "assets/icons/lifeos-app.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

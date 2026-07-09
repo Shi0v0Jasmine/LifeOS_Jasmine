@@ -162,6 +162,11 @@
                     this.db = request.result;
                     console.log('[LifeOS] IndexedDB 初始化成功，版本:', this.version);
                     resolve(this.db);
+                    if (typeof BackendSync !== 'undefined') {
+                        BackendSync.restore().then(function(restored) {
+                            if (restored) console.log('[LifeOS] Data restored from backend');
+                        });
+                    }
                 };
 
                 request.onupgradeneeded = (event) => {
@@ -439,7 +444,7 @@
     const TaskStore = {
         async create(task) {
             const data = {
-                id: Utils.generateId(),
+                id: task.id || Utils.generateId(),
                 title: task.title || '未命名任务',
                 description: task.description || '',
                 priority: task.priority || 5,
@@ -453,6 +458,8 @@
                 images: task.images || [],
                 subtasks: task.subtasks || [],
                 date: task.date || Utils.formatDate(),
+                generatedFromTaskId: task.generatedFromTaskId || null,
+                recurringInstanceDate: task.recurringInstanceDate || task.date || Utils.formatDate(),
                 createdAt: Utils.now(),
                 updatedAt: Utils.now()
             };
@@ -473,6 +480,8 @@
         async toggleComplete(id) {
             const task = await db.get('tasks', id);
             if (!task) return null;
+            const wasCompleted = !!task.completed;
+            const previousCompletedAt = task.completedAt;
             task.completed = !task.completed;
             task.completedAt = task.completed ? Utils.now() : null;
             task.updatedAt = Utils.now();
@@ -492,11 +501,31 @@
                         date: tomorrowStr,
                         completed: false,
                         completedAt: null,
+                        generatedFromTaskId: task.id,
+                        recurringInstanceDate: tomorrowStr,
                         createdAt: Utils.now(),
                         updatedAt: Utils.now()
                     };
                     delete newTask.completedAt;
                     await db.put('tasks', newTask);
+                }
+            } else if (wasCompleted && !task.completed && task.isRecurring && task.recurringRule) {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = Utils.formatDate(tomorrow);
+                const existing = await db.getByIndex('tasks', 'date', tomorrowStr);
+                const generatedNext = existing.filter(t => (
+                    t.isRecurring &&
+                    !t.completed &&
+                    t.title === task.title &&
+                    t.deadline === task.deadline &&
+                    (
+                        t.generatedFromTaskId === task.id ||
+                        (!t.generatedFromTaskId && previousCompletedAt && t.createdAt >= previousCompletedAt)
+                    )
+                ));
+                for (const nextTask of generatedNext) {
+                    await db.delete('tasks', nextTask.id);
                 }
             }
             return task;
@@ -873,6 +902,359 @@
         }
     };
 
+
+    // ============================================================
+    // 3.2 Generic AI Client - OpenAI-compatible chat API
+    // ============================================================
+    const AIClient = {
+        defaults: {
+            timeoutMs: 30000,
+            retries: 1,
+            retryDelayMs: 800,
+            model: 'gpt-4o-mini'
+        },
+
+        async getConfig(overrides = {}) {
+            const storedBaseUrl = await SettingsStore.get('apiBaseUrl', '');
+            const storedApiKey = await SettingsStore.get('apiKey', '');
+            const storedModel = await SettingsStore.get('apiModel', this.defaults.model);
+            const storedCustomModel = await SettingsStore.get('apiCustomModel', '');
+            const model = overrides.model || storedModel || storedCustomModel || this.defaults.model;
+
+            return {
+                baseUrl: overrides.baseUrl !== undefined ? overrides.baseUrl : storedBaseUrl,
+                apiKey: overrides.apiKey !== undefined ? overrides.apiKey : storedApiKey,
+                model: model === 'custom' ? (overrides.customModel || storedCustomModel || this.defaults.model) : model,
+                timeoutMs: overrides.timeoutMs || this.defaults.timeoutMs,
+                retries: overrides.retries !== undefined ? overrides.retries : this.defaults.retries,
+                retryDelayMs: overrides.retryDelayMs || this.defaults.retryDelayMs,
+                ignoreOffline: !!overrides.ignoreOffline
+            };
+        },
+
+        _normalizeBaseUrl(baseUrl) {
+            return (baseUrl || '').trim().replace(/\/+$/, '');
+        },
+
+        _chatEndpoint(baseUrl) {
+            const normalized = this._normalizeBaseUrl(baseUrl);
+            if (/\/chat\/completions$/i.test(normalized)) return normalized;
+            return normalized + '/chat/completions';
+        },
+
+        _createError(message, data = {}) {
+            const error = new Error(message);
+            error.name = 'AIClientError';
+            error.code = data.code || 'AI_CLIENT_ERROR';
+            error.status = data.status || null;
+            error.details = data.details || null;
+            error.retryable = !!data.retryable;
+            return error;
+        },
+
+        _isRetryableStatus(status) {
+            return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+        },
+
+        _sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        },
+
+        async _readResponse(response) {
+            const rawText = await response.text().catch(() => '');
+            let data = null;
+            if (rawText) {
+                try {
+                    data = JSON.parse(rawText);
+                } catch (err) {
+                    data = { raw: rawText };
+                }
+            }
+
+            if (!response.ok) {
+                const apiMessage = data && data.error && data.error.message
+                    ? data.error.message
+                    : (rawText || response.statusText || 'AI request failed');
+                throw this._createError(apiMessage, {
+                    code: 'AI_API_ERROR',
+                    status: response.status,
+                    details: data,
+                    retryable: this._isRetryableStatus(response.status)
+                });
+            }
+
+            if (!data || !Array.isArray(data.choices)) {
+                throw this._createError('AI response format is invalid', {
+                    code: 'AI_INVALID_RESPONSE',
+                    status: response.status,
+                    details: data,
+                    retryable: false
+                });
+            }
+            return data;
+        },
+
+        _normalizeMessages(options) {
+            if (Array.isArray(options.messages) && options.messages.length) {
+                return options.messages;
+            }
+            const messages = [];
+            if (options.system) messages.push({ role: 'system', content: options.system });
+            if (options.prompt) messages.push({ role: 'user', content: options.prompt });
+            if (!messages.length) {
+                throw this._createError('AI request requires messages or prompt', { code: 'AI_EMPTY_PROMPT' });
+            }
+            return messages;
+        },
+
+        _buildPayload(options, config) {
+            const payload = {
+                model: options.model || config.model,
+                messages: this._normalizeMessages(options),
+                stream: false
+            };
+            if (options.temperature !== undefined) payload.temperature = options.temperature;
+            if (options.maxTokens !== undefined) payload.max_tokens = options.maxTokens;
+            if (options.responseFormat) payload.response_format = options.responseFormat;
+            if (options.extra && typeof options.extra === 'object') {
+                Object.assign(payload, options.extra);
+            }
+            return payload;
+        },
+
+        async _recordHistory(entry) {
+            try {
+                const now = new Date();
+                const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                const history = await SettingsStore.get('apiHistory', []);
+                history.push({
+                    time,
+                    success: !!entry.success,
+                    endpoint: entry.endpoint || '/chat/completions',
+                    status: entry.status || '',
+                    model: entry.model || '',
+                    durationMs: entry.durationMs || 0,
+                    tokens: entry.tokens || null,
+                    attempts: entry.attempts || 1
+                });
+                await SettingsStore.set('apiHistory', history.slice(-50));
+            } catch (err) {
+                console.warn('[LifeOS] AI history write failed:', err.message);
+            }
+        },
+
+        async chat(options = {}) {
+            const config = await this.getConfig(options);
+            const offlineMode = await SettingsStore.get('offlineMode', false);
+            if (offlineMode && !config.ignoreOffline) {
+                throw this._createError('AI offline mode is enabled', { code: 'AI_OFFLINE_MODE' });
+            }
+            if (!config.baseUrl) {
+                throw this._createError('AI Base URL is not configured', { code: 'AI_CONFIG_MISSING' });
+            }
+            if (!config.apiKey) {
+                throw this._createError('AI API Key is not configured', { code: 'AI_CONFIG_MISSING' });
+            }
+            if (!config.model) {
+                throw this._createError('AI model is not configured', { code: 'AI_CONFIG_MISSING' });
+            }
+
+            const endpoint = this._chatEndpoint(config.baseUrl);
+            const payload = this._buildPayload(options, config);
+            const startedAt = Date.now();
+            let lastError = null;
+
+            for (let attempt = 0; attempt <= config.retries; attempt++) {
+                let timeoutId = null;
+                let controller = null;
+                try {
+                    if (typeof AbortController !== 'undefined' && config.timeoutMs > 0) {
+                        controller = new AbortController();
+                        timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
+                    }
+
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${config.apiKey}`
+                        },
+                        body: JSON.stringify(payload),
+                        signal: controller ? controller.signal : undefined
+                    });
+                    if (timeoutId) clearTimeout(timeoutId);
+                    const data = await this._readResponse(response);
+                    await this._recordHistory({
+                        success: true,
+                        endpoint: '/chat/completions',
+                        status: `${response.status} OK`,
+                        model: payload.model,
+                        durationMs: Date.now() - startedAt,
+                        tokens: data.usage && data.usage.total_tokens,
+                        attempts: attempt + 1
+                    });
+                    return data;
+                } catch (err) {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    lastError = err && err.name === 'AbortError'
+                        ? this._createError('AI request timed out', { code: 'AI_TIMEOUT', retryable: true })
+                        : err;
+                    if (!lastError.retryable || attempt >= config.retries) break;
+                    await this._sleep(config.retryDelayMs * Math.pow(2, attempt));
+                }
+            }
+
+            const finalError = lastError && lastError.name === 'AIClientError'
+                ? lastError
+                : this._createError(lastError ? lastError.message : 'AI request failed', {
+                    code: 'AI_NETWORK_ERROR',
+                    retryable: true
+                });
+            await this._recordHistory({
+                success: false,
+                endpoint: '/chat/completions',
+                status: finalError.status ? `${finalError.status}` : finalError.code,
+                model: payload.model,
+                durationMs: Date.now() - startedAt,
+                attempts: config.retries + 1
+            });
+            throw finalError;
+        },
+
+        extractText(response) {
+            const choice = response && response.choices && response.choices[0];
+            const content = choice && choice.message && choice.message.content;
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+                return content.map(part => {
+                    if (typeof part === 'string') return part;
+                    return part.text || '';
+                }).join('');
+            }
+            return '';
+        },
+
+        async complete(prompt, options = {}) {
+            const response = await this.chat({ ...options, prompt });
+            return this.extractText(response);
+        },
+
+        async testConnection(overrides = {}) {
+            const response = await this.chat({
+                ...overrides,
+                messages: [{ role: 'user', content: 'Hi' }],
+                maxTokens: overrides.maxTokens || 5,
+                temperature: 0,
+                retries: overrides.retries !== undefined ? overrides.retries : 0,
+                timeoutMs: overrides.timeoutMs || 15000,
+                ignoreOffline: true
+            });
+            return {
+                ok: true,
+                model: response.model || (await this.getConfig(overrides)).model,
+                content: this.extractText(response),
+                usage: response.usage || null
+            };
+        }
+    };
+
+
+    // ============================================================
+    // 3.5 Backend Sync - JSON file persistence via REST API
+    // ============================================================
+    const BackendSync = {
+        _apiBase: (function() {
+            if (window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+                return window.location.origin + '/api';
+            }
+            return null;
+        })(),
+        _enabled: false,
+
+        init() {
+            if (!this._apiBase) return;
+            fetch(this._apiBase + '/status')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    BackendSync._enabled = true;
+                    console.log('[LifeOS] BackendSync: connected');
+                })
+                .catch(function() {});
+        },
+
+        async restore() {
+            if (!this._apiBase) return false;
+            try {
+                const resp = await fetch(this._apiBase + '/db');
+                if (!resp.ok) return false;
+                const data = await resp.json();
+                if (!data || !data._meta) return false;
+                var storeNames = ['timeline','tasks','habits','habitRecords',
+                                  'reviews','skills','notes','characters','settings','moments'];
+                var hasData = false;
+                for (var i = 0; i < storeNames.length; i++) {
+                    if (Array.isArray(data[storeNames[i]]) && data[storeNames[i]].length > 0) { hasData = true; break; }
+                }
+                if (!hasData) return false;
+                var idbEmpty = true;
+                for (var i = 0; i < storeNames.length; i++) {
+                    var items = await db.getAll(storeNames[i]);
+                    if (items.length > 0) { idbEmpty = false; break; }
+                }
+                if (idbEmpty) {
+                    console.log('[LifeOS] BackendSync: restoring from backend...');
+                    await db.importAll(data, 'overwrite');
+                    console.log('[LifeOS] BackendSync: restored successfully');
+                    return true;
+                } else {
+                    await db.importAll(data, 'merge');
+                    return true;
+                }
+            } catch (e) {
+                console.warn('[LifeOS] BackendSync restore failed:', e.message);
+                return false;
+            }
+        },
+
+        async sync() {
+            if (!this._apiBase) return false;
+            try {
+                const data = await db.exportAll();
+                const resp = await fetch(this._apiBase + '/db', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                if (resp.ok) { console.log('[LifeOS] BackendSync: saved'); return true; }
+            } catch (e) { /* silent */ }
+            return false;
+        },
+
+        async status() {
+            if (!this._apiBase) return null;
+            try { const resp = await fetch(this._apiBase + '/status'); return await resp.json(); }
+            catch (e) { return null; }
+        }
+    };
+
+    var _debouncedSync = Utils.debounce(function() { BackendSync.sync(); }, 2000);
+
+    var _originalPut = db.put.bind(db);
+    db.put = async function(storeName, data) {
+        var result = await _originalPut(storeName, data);
+        _debouncedSync();
+        return result;
+    };
+
+    var _originalDelete = db.delete.bind(db);
+    db.delete = async function(storeName, id) {
+        var result = await _originalDelete(storeName, id);
+        _debouncedSync();
+        return result;
+    };
+
+    BackendSync.init();
+
     // ============================================================
     // 4. 全局暴露
     // ============================================================
@@ -887,7 +1269,9 @@
         Character: CharacterStore,
         Moment: MomentStore,
         Settings: SettingsStore,
-        ExportImport
+        AIClient,
+        ExportImport,
+        BackendSync
     };
 
     console.log('[LifeOS] core.js 加载完成 ✓');

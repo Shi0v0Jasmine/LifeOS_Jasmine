@@ -141,7 +141,7 @@ class FakeStore {
     }
 }
 
-function loadLifeOS() {
+function loadLifeOS(fetchImpl) {
     const context = {
         window: {},
         console,
@@ -156,7 +156,18 @@ function loadLifeOS() {
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} },
         document: { createElement: () => ({ click() {} }) },
         setTimeout,
-        structuredClone: global.structuredClone
+        clearTimeout,
+        AbortController: global.AbortController,
+        structuredClone: global.structuredClone,
+        fetch: fetchImpl || function() {
+            return Promise.resolve({
+                ok: false,
+                status: 500,
+                statusText: 'Server Error',
+                text: function() { return Promise.resolve('{}'); },
+                json: function() { return Promise.resolve({}); }
+            });
+        }
     };
     vm.createContext(context);
     const corePath = path.join(__dirname, '..', 'LifeOS', 'js', 'core.js');
@@ -235,6 +246,37 @@ async function testHabitStreakSkipsFutureRecordsAndStopsAtMissedToday() {
     assert.strictEqual(streak, 0, 'an explicit missed record today should break the current streak');
 }
 
+async function testRecurringTaskUndoRemovesGeneratedNextTask() {
+    const LifeOS = loadLifeOS();
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+
+    const today = LifeOS.Utils.formatDate();
+    const tomorrow = LifeOS.Utils.formatDate(new Date(Date.now() + 86400000));
+
+    const task = await LifeOS.Task.create({
+        title: 'Daily language study',
+        deadline: tomorrow,
+        date: today,
+        isRecurring: true,
+        recurringRule: { type: 'daily' }
+    });
+
+    const completed = await LifeOS.Task.toggleComplete(task.id);
+    const afterComplete = await LifeOS.Task.getAll();
+    const generatedNext = afterComplete.find(t => t.date === tomorrow && t.generatedFromTaskId === task.id);
+
+    assert.strictEqual(completed.completed, true, 'task should become completed');
+    assert.ok(generatedNext, 'completing a recurring task should create the next instance');
+    assert.strictEqual(generatedNext.completed, false, 'generated next instance should be pending');
+
+    const undone = await LifeOS.Task.toggleComplete(task.id);
+    const afterUndo = await LifeOS.Task.getAll();
+
+    assert.strictEqual(undone.completed, false, 'task should become pending after undo');
+    assert.strictEqual(afterUndo.some(t => t.generatedFromTaskId === task.id), false, 'undo should remove the generated next instance');
+}
+
 async function testReviewUpdatePreservesCreatedAt() {
     const LifeOS = loadLifeOS();
     await LifeOS.Database.init();
@@ -248,11 +290,113 @@ async function testReviewUpdatePreservesCreatedAt() {
     assert.notStrictEqual(second.updatedAt, first.updatedAt, 'review updatedAt should change across updates');
 }
 
+async function testAIClientSendsOpenAICompatibleChatRequest() {
+    const calls = [];
+    const LifeOS = loadLifeOS((url, options) => {
+        calls.push({ url, options, body: JSON.parse(options.body) });
+        return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            text: () => Promise.resolve(JSON.stringify({
+                id: 'chatcmpl-test',
+                model: 'test-model',
+                choices: [{ message: { role: 'assistant', content: 'pong' } }],
+                usage: { total_tokens: 7 }
+            }))
+        });
+    });
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('apiBaseUrl', 'https://api.example.test/v1/');
+    await LifeOS.Settings.set('apiKey', 'test-key');
+    await LifeOS.Settings.set('apiModel', 'test-model');
+
+    const text = await LifeOS.AIClient.complete('Ping', {
+        retries: 0,
+        temperature: 0.2,
+        maxTokens: 12
+    });
+    const history = await LifeOS.Settings.get('apiHistory', []);
+
+    assert.strictEqual(text, 'pong', 'AIClient.complete should return assistant text');
+    assert.strictEqual(calls.length, 1, 'AIClient should send exactly one request');
+    assert.strictEqual(calls[0].url, 'https://api.example.test/v1/chat/completions');
+    assert.strictEqual(calls[0].options.method, 'POST');
+    assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer test-key');
+    assert.strictEqual(calls[0].body.model, 'test-model');
+    assert.deepStrictEqual(calls[0].body.messages, [{ role: 'user', content: 'Ping' }]);
+    assert.strictEqual(calls[0].body.max_tokens, 12);
+    assert.strictEqual(calls[0].body.temperature, 0.2);
+    assert.strictEqual(history.length, 1, 'AIClient should record API history');
+    assert.strictEqual(history[0].success, true);
+    assert.strictEqual(history[0].tokens, 7);
+}
+
+async function testAIClientRetriesRetryableFailures() {
+    let callCount = 0;
+    const LifeOS = loadLifeOS(() => {
+        callCount += 1;
+        if (callCount === 1) {
+            return Promise.resolve({
+                ok: false,
+                status: 500,
+                statusText: 'Server Error',
+                text: () => Promise.resolve(JSON.stringify({ error: { message: 'temporary outage' } }))
+            });
+        }
+        return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            text: () => Promise.resolve(JSON.stringify({
+                choices: [{ message: { role: 'assistant', content: 'recovered' } }]
+            }))
+        });
+    });
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('apiBaseUrl', 'https://api.example.test/v1');
+    await LifeOS.Settings.set('apiKey', 'test-key');
+    await LifeOS.Settings.set('apiModel', 'test-model');
+
+    const response = await LifeOS.AIClient.chat({
+        prompt: 'Retry once',
+        retries: 1,
+        retryDelayMs: 1
+    });
+    const history = await LifeOS.Settings.get('apiHistory', []);
+
+    assert.strictEqual(callCount, 2, 'AIClient should retry one retryable failure');
+    assert.strictEqual(LifeOS.AIClient.extractText(response), 'recovered');
+    assert.strictEqual(history.length, 1, 'AIClient should record the final successful call once');
+    assert.strictEqual(history[0].success, true);
+    assert.strictEqual(history[0].attempts, 2);
+}
+
+async function testAIClientRequiresConfiguration() {
+    const LifeOS = loadLifeOS(() => {
+        throw new Error('fetch should not be called without config');
+    });
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+
+    await assert.rejects(
+        () => LifeOS.AIClient.chat({ prompt: 'No config' }),
+        (error) => error.code === 'AI_CONFIG_MISSING',
+        'AIClient should fail before fetch when config is missing'
+    );
+}
+
 const tests = [
     testRecurringEventsDoNotAppearBeforeStartDate,
     testUpdatingRecurringEventToNonRecurringClearsRecurringFlag,
     testHabitStreakSkipsFutureRecordsAndStopsAtMissedToday,
-    testReviewUpdatePreservesCreatedAt
+    testRecurringTaskUndoRemovesGeneratedNextTask,
+    testReviewUpdatePreservesCreatedAt,
+    testAIClientSendsOpenAICompatibleChatRequest,
+    testAIClientRetriesRetryableFailures,
+    testAIClientRequiresConfiguration
 ];
 
 (async () => {
