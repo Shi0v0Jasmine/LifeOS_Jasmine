@@ -35,6 +35,18 @@
 
 **核心决策**：我们需要存储图片（base64）、富文本、大量历史记录。IndexedDB 是唯一能在浏览器中存储结构化大数据的方案。
 
+### 1.4 为什么补 PWA，而不是只保留普通 HTML 页面？【2026-07-09 14:38】
+
+PWA 是本地工具体验的增强层，不改变多页面架构。它解决两个问题：
+
+| 能力 | 对 LifeOS 的价值 | 当前实现 |
+|------|------------------|----------|
+| 安装到桌面 | 用户可以像打开本机应用一样打开 LifeOS | `manifest.webmanifest` 提供名称、图标、启动页、主题色 |
+| 离线可用 | 没有网络时仍能打开核心页面和静态资源 | `sw.js` 缓存 HTML/CSS/JS/SVG，并运行时缓存 CDN Vue |
+| HTTP 环境增强 | `node server.js` 或静态服务器下可注册 Service Worker | `js/pwa.js` 在 `http:`/`https:` 下注册，`file://` 下自动跳过 |
+
+**核心决策**：PWA 不能破坏 `file://` 的低门槛使用方式。因此 `js/pwa.js` 会先判断协议，只有在本地服务或正式部署环境中才注册 Service Worker；双击 HTML 打开时不会报错。
+
 ---
 
 ## 二、目录结构
@@ -49,10 +61,13 @@ LifeOS/
 ├── learning.html           # 学习日记
 ├── characters.html         # 角色库（人物信息库）
 ├── settings.html           # 设置（API 配置等）
+├── manifest.webmanifest    # PWA 安装配置
+├── sw.js                   # Service Worker 离线缓存
 ├── css/
 │   └── style.css           # 全局样式系统（CSS 变量、配色、字体、布局）
 ├── js/
 │   ├── db.js               # IndexedDB 数据库封装（核心数据层）
+│   ├── pwa.js              # PWA 注册与安装提示状态
 │   ├── api.js              # 通用 AI API 客户端封装
 │   ├── utils.js            # 工具函数（日期、格式化、防抖等）
 │   ├── components/         # 共享 Vue 组件
@@ -63,7 +78,7 @@ LifeOS/
 ├── data/
 │   └── characters.json       # 预置角色数据（排球少年/Fate/EVA/柯南）
 ├── assets/
-│   └── icons/              # 图标资源（SVG）
+│   └── icons/              # 图标资源（SVG），含 lifeos-app.svg PWA 图标
 └── guide/                  # 教学指南（本文件所在目录）
     ├── step-00-project-setup.md      # 本文件
     ├── step-01-ui-design-system.md   # 全局样式系统
@@ -1116,6 +1131,50 @@ export function markdownToHtml(markdown) {
 }
 ```
 
+### 3.5 PWA 基础文件（v1.2 补充）【2026-07-09 14:38】
+
+PWA 由三个文件和每个 HTML 页面的 `<head>` 挂载组成：
+
+```html
+<meta name="theme-color" content="#7DD3FC">
+<link rel="manifest" href="manifest.webmanifest">
+<script src="js/pwa.js"></script>
+```
+
+`manifest.webmanifest` 负责浏览器安装信息：
+
+```json
+{
+  "name": "LifeOS",
+  "short_name": "LifeOS",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "theme_color": "#7DD3FC",
+  "icons": [{ "src": "assets/icons/lifeos-app.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
+```
+
+`js/pwa.js` 只在 HTTP(S) 下注册 Service Worker：
+
+```javascript
+if ('serviceWorker' in navigator && /^https?:$/.test(window.location.protocol)) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' });
+    });
+}
+```
+
+`sw.js` 使用分层缓存：
+
+| 缓存 | 内容 | 策略 |
+|------|------|------|
+| `lifeos-static-*` | 本地 HTML/CSS/JS/SVG 等核心静态资源 | install 时预缓存，后续 cache-first |
+| `lifeos-data-*` | 本机后端 GET 请求，如 `/api/db` | network-first，离线时读最近缓存 |
+| `lifeos-runtime-*` | CDN Vue 等跨域运行时资源 | 首次在线访问后 cache-first |
+
+**注意**：Service Worker 不能在 `file://` 下工作，所以 PWA 验证必须通过 `node server.js` 或 `python -m http.server` 打开。
+
 ---
 
 ## 四、验证步骤
@@ -1168,6 +1227,20 @@ console.log('四象限:', calculateQuadrant('2026-07-05', 9));  // 3天后截止
 console.log('象限信息:', getQuadrantInfo('urgent-important'));
 console.log('Markdown转HTML:', markdownToHtml('# 标题\n**粗体**\n- 列表1'));
 ```
+
+### 4.4 验证 PWA 配置
+
+```bash
+node --check LifeOS\js\pwa.js
+node --check LifeOS\sw.js
+node server.js
+```
+
+然后访问：
+
+- `http://localhost:3000/manifest.webmanifest` 应返回 200
+- `http://localhost:3000/sw.js` 应返回 200
+- 打开 `http://localhost:3000/index.html`，DevTools → Application → Service Workers 中应能看到 LifeOS 的 Service Worker
 
 ---
 

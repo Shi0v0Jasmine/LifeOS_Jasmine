@@ -70,7 +70,7 @@
     key: 'enableEncourage', value: true,
     key: 'offlineMode',     value: false,
     key: 'autoSave',        value: true,
-    key: 'apiHistory',      value: [{ time, success, endpoint, status }, ...]
+    key: 'apiHistory',      value: [{ time, success, endpoint, status, model, durationMs, tokens, attempts }, ...]
 }
 ```
 
@@ -98,23 +98,25 @@ async reset() {
 
 **为什么用 `store.clear()` 而非 `deleteDatabase()`？** `deleteDatabase()` 会删除整个数据库（包括结构、版本号、索引），下次打开时需要重新执行 `onupgradeneeded`，重新创建所有 Object Store。`store.clear()` 只删除数据，保留结构，重置后应用可以直接使用，无需重新初始化。
 
-### 2.3 API 测试连接的实现
+### 2.3 API 测试连接的实现（v1.2 更新）【2026-07-09 14:38】
 
 ```javascript
 const testConnection = async () => {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: model || 'gpt-4o-mini',
-            messages: [{ role: 'user', content: 'Hi' }],
-            max_tokens: 5  // 最小请求，减少 token 消耗
-        })
+    const model = apiForm.value.model === 'custom'
+        ? apiForm.value.customModel
+        : apiForm.value.model;
+
+    const result = await LifeOS.AIClient.testConnection({
+        baseUrl: apiForm.value.baseUrl,
+        apiKey: apiForm.value.apiKey,
+        model: model || 'gpt-4o-mini'
     });
-    // 200 OK = 配置正确；4xx = 配置错误（Key 无效/模型不存在）；5xx = 服务端问题
+
+    testResult.value = {
+        type: 'success',
+        message: `连接成功！模型 ${result.model || model} 可用。`
+    };
+    apiHistory.value = await LifeOS.Settings.get('apiHistory', []);
 };
 ```
 
@@ -122,7 +124,48 @@ const testConnection = async () => {
 
 **为什么测试请求也记录到调用历史？** 测试请求是真实的 API 调用，会消耗 token 和配额。记录到历史有助于用户追踪"我为了测试花了多少钱"。
 
-### 2.4 开关按钮的交互设计
+**为什么不在设置页直接写 `fetch`？** AI 功能会被多个模块复用：GRAI 分析、饮食识别、学习关键词提取、任务拆解等。如果每个页面都自己拼 URL、处理错误、记录历史，很快会出现行为不一致。设置页只负责表单和结果展示，真正请求统一交给 `LifeOS.AIClient`。
+
+### 2.4 通用 AI 客户端 `LifeOS.AIClient`（v1.2 补充）【2026-07-09 14:38】
+
+`AIClient` 位于 `js/core.js`，对外暴露这些方法：
+
+| 方法 | 用途 |
+|------|------|
+| `getConfig(overrides)` | 从 `LifeOS.Settings` 读取 Base URL/API Key/模型，并允许临时覆盖 |
+| `chat(options)` | 发送 OpenAI-compatible `/chat/completions` 请求，返回原始响应 |
+| `complete(prompt, options)` | 快捷发送单条 prompt，返回 assistant 文本 |
+| `testConnection(overrides)` | 设置页测试连接，使用最小 token 请求 |
+| `extractText(response)` | 从 OpenAI-compatible 响应中提取文本 |
+
+请求封装要点：
+
+```javascript
+await LifeOS.AIClient.chat({
+    messages: [
+        { role: 'system', content: '你是 LifeOS 的分析助手' },
+        { role: 'user', content: '请用 GRAI 分析今天的复盘' }
+    ],
+    temperature: 0.3,
+    maxTokens: 800,
+    retries: 1,
+    timeoutMs: 30000
+});
+```
+
+客户端统一处理：
+
+| 责任 | 说明 |
+|------|------|
+| URL 规范化 | Base URL 可写 `https://api.example.com/v1` 或完整 `/chat/completions` |
+| 配置校验 | 缺 Base URL/API Key/模型时，在发请求前抛出 `AI_CONFIG_MISSING` |
+| 离线模式 | `offlineMode` 开启时默认拒绝联网请求，测试连接可用 `ignoreOffline` 跳过 |
+| 超时 | 使用 `AbortController` 控制请求超时 |
+| 重试 | 仅对 408/409/425/429/5xx 和网络类错误重试 |
+| 错误归一 | 抛出 `AIClientError`，包含 `code`、`status`、`details`、`retryable` |
+| 调用历史 | 写入 `apiHistory`，最多保留最近 50 条 |
+
+### 2.5 开关按钮的交互设计
 
 ```css
 .toggle-switch {
@@ -143,7 +186,7 @@ const testConnection = async () => {
 
 **为什么用 CSS 伪元素 `::after` 做滑块而非一个独立的 div？** 减少 DOM 节点数。一个 `div` 即可完成背景和滑块两种视觉元素，通过伪元素实现滑块，CSS 纯动画，无需 JS 干预。
 
-### 2.5 设置项的默认值策略
+### 2.6 设置项的默认值策略
 
 ```javascript
 const loadSettings = async () => {
@@ -171,7 +214,8 @@ LifeOS/
 │   ├── API 调用历史卡片：时间/成功/端点/状态码列表
 │   └── 关于卡片：版本信息 / 开源链接
 ├── js/core.js
-│   └── Database.reset()  ← 清空所有 Object Store 的数据
+│   ├── Database.reset()  ← 清空所有 Object Store 的数据
+│   └── AIClient          ← 通用 OpenAI-compatible AI 客户端
 └── css/style.css          ← 复用全局变量
 ```
 
@@ -196,7 +240,7 @@ alert('配置已保存！')
     ↓
 用户点击"测试连接"
     ↓
-fetch(baseUrl + '/chat/completions', { ... }) → 发送最小请求
+LifeOS.AIClient.testConnection({ baseUrl, apiKey, model }) → 发送最小请求
     ↓
 成功：显示绿色成功提示 + 记录到 apiHistory
 失败：显示红色错误提示 + 记录到 apiHistory
@@ -240,9 +284,25 @@ async reset() {
 Access to fetch at 'https://api.openai.com/v1/chat/completions' from origin 'file://' has been blocked by CORS policy.
 ```
 
-**解决方案**：在 `file://` 协议下，fetch 到外部 API 通常会被浏览器 CORS 策略阻止。这是安全限制，无法在前端解决。实际部署到服务器时（HTTPS 域名），CORS 问题由后端代理或 API 提供商的 CORS 配置解决。在设置页面中，测试连接的失败也是有效的"测试"——它告诉用户"配置可能正确，但当前环境不允许直接访问"。
+**解决方案**：`LifeOS.AIClient` 统一了请求、错误、超时和历史记录，但不能绕过浏览器 CORS。`file://` 或部分第三方 API 仍可能被浏览器拦截。实际部署到服务器时（HTTPS 域名），CORS 问题由后端代理或 API 提供商的 CORS 配置解决。在设置页面中，测试连接的失败也是有效的"测试"——它告诉用户"配置可能正确，但当前环境不允许直接访问"。
 
-### 坑 3：文件输入的 reset
+### 坑 3：不要在页面里重复手写 AI 请求
+
+错误做法：
+
+```javascript
+await fetch(`${baseUrl}/chat/completions`, { ... });
+```
+
+正确做法：
+
+```javascript
+await LifeOS.AIClient.complete(prompt, { maxTokens: 800 });
+```
+
+原因：重复手写请求会遗漏离线模式、重试、超时和调用历史。所有 AI 功能都应该通过 `LifeOS.AIClient` 走统一出口。
+
+### 坑 4：文件输入的 reset
 
 导入文件选择后，如果导入失败，再次点击"导入"需要重新选择文件。因为 `<input type="file">` 的值在导入后不会自动清空，需要手动设置 `input.value = ''`：
 
@@ -257,11 +317,11 @@ const confirmImport = async () => {
 };
 ```
 
-### 坑 4：API Key 的 type="password"
+### 坑 5：API Key 的 type="password"
 
 `<input type="password">` 会隐藏输入内容（显示圆点），但在浏览器中按 F12 查看 DOM 仍然可以读取 `value` 属性。这是浏览器的安全限制——前端无法真正隐藏数据。设置页面中的提示语"密钥仅存储在本地 IndexedDB，不会上传到任何服务器"是安全承诺，而非技术保障（因为代码本身可以读取 IndexedDB）。
 
-### 坑 5：自定义模型名的联动显示
+### 坑 6：自定义模型名的联动显示
 
 当用户选择"自定义"模型时，需要显示额外的输入框。Vue 的条件渲染：
 
@@ -280,7 +340,32 @@ await LifeOS.Settings.set('apiModel', model);
 
 ---
 
-## 六、v1.0 全部完成 🎉
+## 六、验证步骤
+
+### 6.1 验证 AIClient 数据层行为
+
+```bash
+node --check LifeOS\js\core.js
+node tests\core-data.test.js
+```
+
+重点确认：
+
+- `testAIClientSendsOpenAICompatibleChatRequest` 通过，说明请求体、headers、endpoint 正确
+- `testAIClientRetriesRetryableFailures` 通过，说明 5xx 等可重试错误会按配置重试
+- `testAIClientRequiresConfiguration` 通过，说明缺配置时不会发出网络请求
+
+### 6.2 验证设置页测试连接
+
+1. 打开 `settings.html`
+2. 填写 Base URL、API Key、模型名
+3. 点击"测试连接"
+4. 成功时显示绿色结果，并在 API 调用历史中新增记录
+5. 失败时显示归一化错误信息，同时历史中记录失败状态
+
+---
+
+## 七、v1.0 全部完成 🎉
 
 至此，Life OS v1.0 的所有 **9 个页面** 全部完成：
 

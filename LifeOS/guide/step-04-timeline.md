@@ -182,6 +182,79 @@ const openAddEvent = (type, slot) => {
 - 任务完成时自动标记时间轴事件为完成
 - 统计某任务实际花费的时间
 
+### 2.6 从任务条拖拽到预计时间轴（v1.2 补充）【2026-07-09 14:38】
+
+F-021 的落点在时间轴页面：日视图顶部展示当前日期的未完成任务条，用户把任务拖到"预计安排"列的某个 30 分钟时间格后，系统自动创建一条 planned 事件。
+
+模板结构：
+
+```html
+<section class="task-sidebar-list timeline-task-dock" data-testid="timeline-task-dock">
+    <div v-for="task in schedulableTasks"
+         class="task-sidebar-item timeline-task-drag-item"
+         draggable="true"
+         :data-task-id="task.id"
+         @dragstart="onTaskDragStart(task, $event)"
+         @dragend="onTaskDragEnd">
+        <span class="task-name">{{ task.title }}</span>
+    </div>
+</section>
+
+<div v-for="slot in timeSlots"
+     class="time-slot"
+     @dragenter.prevent="onSlotDragEnter('planned', slot, $event)"
+     @dragover.prevent="onSlotDragOver('planned', slot, $event)"
+     @drop.prevent.stop="onTaskDrop('planned', slot, $event)">
+</div>
+```
+
+关键状态：
+
+```javascript
+const todayTasks = ref([]);
+const draggingTask = ref(null);
+const scheduledTaskIds = computed(() => new Set(
+    plannedEvents.value.map(e => e.taskId).filter(Boolean)
+));
+const schedulableTasks = computed(() => todayTasks.value.filter(task => (
+    !task.completed && !scheduledTaskIds.value.has(task.id)
+)));
+```
+
+**为什么用当前日期的任务，而不是固定今日任务？** 时间轴已经支持日期切换。如果用户切到明天，任务条也应显示明天的任务，否则拖拽会把"今天的任务"误排到其他日期。加载时使用：
+
+```javascript
+todayTasks.value = await LifeOS.Task.getByDate(currentDate.value);
+```
+
+拖拽 payload：
+
+```javascript
+event.dataTransfer.setData('application/x-lifeos-task', JSON.stringify({
+    id: task.id,
+    title: task.title,
+    description: task.description || '',
+    category: task.category || ''
+}));
+```
+
+落点创建事件：
+
+```javascript
+await LifeOS.Timeline.create({
+    title: task.title,
+    description: task.description || '',
+    startTime: range.startTime,
+    endTime: range.endTime,
+    type: 'planned',
+    date: currentDate.value,
+    category: inferTaskCategory(task),
+    taskId: task.id
+});
+```
+
+**为什么只允许 drop 到预计列？** F-021 是"规划今天"场景。实际列代表已经发生的记录，仍应由计时器或手动填写创建，避免把未执行任务误记为已发生。
+
 ---
 
 ## 三、CSS 关键设计
@@ -235,6 +308,36 @@ const openAddEvent = (type, slot) => {
 
 **为什么用半透明背景？** 时间轴上有时间格的分割线（`border-bottom`），半透明背景让分割线隐约可见，增强"时间流逝"的视觉感。同时彩色事件块在白色背景上不会过于刺眼。
 
+### 3.4 任务拖拽条与投放反馈（v1.2 补充）
+
+```css
+.timeline-task-dock {
+    margin-bottom: 12px;
+    border: 1px solid var(--border-card);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+
+.timeline-task-dock-scroll {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+}
+
+.timeline-task-drag-item {
+    flex: 0 0 auto;
+    max-width: 220px;
+    cursor: grab;
+}
+
+.time-slot.drag-over {
+    background: rgba(52, 211, 153, 0.18);
+    box-shadow: inset 0 0 0 2px rgba(52, 211, 153, 0.35);
+}
+```
+
+**为什么横向滚动而非独立侧栏？** 当前时间轴页面已经是双列主结构，再加真正的侧边栏会压缩时间轴宽度。横向任务条占用较少垂直空间，也不会改动双列布局。
+
 ---
 
 ## 四、验证步骤
@@ -267,12 +370,24 @@ const openAddEvent = (type, slot) => {
 3. 修改标题，点击保存 → 事件块标题更新
 4. 再次点击事件块，点击"删除" → 事件块消失
 
-### 4.5 验证侧边栏任务列表
+### 4.5 验证时间轴任务条
 
 1. 确保在任务页面（tasks.html）创建了今日任务
 2. 刷新时间轴页面
-3. 侧边栏"今日任务"区域应显示任务列表
+3. 日视图顶部"可安排任务"区域应显示任务列表
 4. 任务前的圆点：未完成 = 红色，已完成 = 绿色
+
+### 4.6 验证拖拽任务到时间轴（v1.2 补充）
+
+1. 在任务页面创建一个未完成任务，日期为当前时间轴日期
+2. 打开 `timeline.html`，切到"日"视图
+3. 在任务条中找到该任务，拖拽到"预计安排"列的任意时间格
+4. 放开鼠标后，应出现一个 30 分钟事件块
+5. 点击事件块，确认：
+   - 标题与任务标题一致
+   - `taskId` 已关联原任务
+   - 类型为 `planned`
+   - 日期等于当前时间轴日期
 
 ---
 
@@ -284,7 +399,9 @@ const openAddEvent = (type, slot) => {
 | 计时器停止后没有创建事件 | `stopTimer` 中 `create` 失败 | 检查 Console 错误，确认数据库已初始化 |
 | 事件块重叠看不清 | 多个事件在同一时间段 | 这是正常情况，hover 时提升 z-index 显示当前事件 |
 | 时间轴无法滚动 | `overflow-y: auto` 未生效 | 检查 `.timeline-body` 的高度是否被父元素限制 |
-| 侧边栏任务列表为空 | 今日任务没有 `date` 字段 | 确保任务创建时设置了 `date: LifeOS.Utils.formatDate()` |
+| 时间轴任务条为空 | 当前时间轴日期没有未完成任务，或任务已被 planned 事件关联 | 确保任务 `date` 等于 `currentDate`，且尚未被安排 |
+| 拖拽后没有创建事件 | 浏览器没有触发 HTML5 Drag & Drop，或 drop 目标不是预计列 | 确认任务卡有 `draggable="true"`，时间格有 `@drop.prevent.stop`，并检查 Console |
+| 已拖过的任务不再显示 | 该任务已被 planned 事件关联 | 这是预期行为；`schedulableTasks` 会过滤已安排任务，避免重复排期 |
 | 事件编辑后时间未更新 | 弹窗中 `<input type="time">` 的值格式 | 检查 `v-model` 绑定是否正确，浏览器时间输入格式为 "HH:MM" |
 
 ---
@@ -307,6 +424,6 @@ const openAddEvent = (type, slot) => {
 
 > 本文件位置：`guide/step-04-timeline.md`
 > 对应新增/修改：
-> - 新增：`timeline.html`（完整时间轴页面：双列、计时器、事件弹窗、任务关联）
-> - 修改：`css/style.css`（时间轴容器、事件块、类别颜色、计时器条、侧边栏任务列表）
+> - 新增：`timeline.html`（完整时间轴页面：双列、计时器、事件弹窗、任务关联、拖拽任务排期）
+> - 修改：`css/style.css`（时间轴容器、事件块、类别颜色、计时器条、任务拖拽条）
 > - 依赖：`js/core.js`（Timeline DAO、Task DAO）

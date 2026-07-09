@@ -68,9 +68,13 @@ window.LifeOS = {
     Character,       // 角色库 DAO
     Moment,          // 特殊事件 DAO
     Settings,        // 设置 DAO
+    AIClient,        // 通用 OpenAI-compatible AI 客户端（v1.2 补充）
+    BackendSync,     // 本机后端 JSON 同步（v1.2 补充）
     ExportImport     // 导入导出系统
 };
 ```
+
+**v1.2 补充【2026-07-09 14:38】**：`AIClient` 虽然不直接写业务数据，但它统一读取 `Settings` 中的 API 配置，并把调用历史写回 `apiHistory`；因此放在 `core.js` 的公共服务层最合适。页面侧不应再手写 `fetch(baseUrl + '/chat/completions')`，而应统一调用 `LifeOS.AIClient.chat()` / `complete()` / `testConnection()`。
 
 ### 2.2 数据库初始化（幂等设计）
 
