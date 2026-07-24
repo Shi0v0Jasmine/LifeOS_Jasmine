@@ -650,6 +650,19 @@ node --check LifeOS/js/sync.js → OK
 | ⚠️ 已知局限 | CloudBase 匿名登录无法在服务端真正吊销凭证，F-112 为应用层约束（PRD 已注明）；被休眠设备最长 5 分钟后才感知状态变化（缓存窗口）；Supabase 侧 devices 表未实测 |
 | ⚠️ 部署观察项 | 上线后用户报「LifeOS.Sync.listDevices is not a function」：SW 更新滞后——新 settings.html 已到，但页面仍被旧 SW 控制、加载旧缓存 sync.js（诊断时缓存三代并存 v20260721-4/v20260722-1/v20260722-2，新 SW 卡在 installing 等旧页面关闭）。解法：关闭全部 LifeOS 标签页/PWA 后重开（或 Ctrl+Shift+R）。另：网络差时 CloudBase SDK CDN 加载失败会导致 init 静默禁用（_enabled=false），重载即恢复 |
 
+### 9.18 v5.0.1 移动端 UI 适配三修复（2026-07-24）
+
+**背景**：用户手机端截图反馈三处 UI 问题。逐一排查修复，WebBridge + CDP 设备模拟（390×844）截图验证通过。
+
+| 修复项 | 文件 | 根因与方案 |
+|------|------|-----------|
+| 每日回顾心情换行参差（7+1） | `review.html` | 8 个心情 flex-wrap 在窄屏换行为 7+1。改 4×2 固定网格（≤480px：`repeat(4, 1fr)`）。**附带发现**：`.date-display min-width:200px` 撑出横向溢出（情绪第 4 列被挤出屏幕），同步修复：日期导航允许换行收缩 + 四栏复盘手机单列 |
+| 子任务表单日期/备注重叠、按钮竖排 | `css/style.css` | 桌面端 `.add-subtask-form` 用显式 grid 归位（date=col1/row2, note=col2/row2）；移动端改为单列后未重置归位，`grid-column:2` 创建隐式第二列导致重叠。修复：≤768px 下所有子项重置 `grid-column: 1 / -1; grid-row: auto` |
+| 时间轴页完全无移动端适配 | `timeline.html` | **根因：缺 `<meta name="viewport">`**——手机按 980px 渲染桌面布局，全局移动端 CSS（隐藏侧边栏/汉堡菜单/单栏）全部失效。修复：① 补 viewport meta ② 新增预计/实际单栏 Tab 切换（`mobileTab` 状态 + `timeline-mobile-tabs`，桌面端隐藏）③ 时间格压缩：槽高 40→30px、半小时标签隔行隐藏（整点仍可见） |
+| SW 缓存 | `sw.js` | `v20260722-2` → `v20260724-1` |
+| 验证 | WebBridge + CDP 设备模拟 | 三页面 390×844 视口截图逐项核对 ✅（timeline 单栏+Tab+汉堡、review 4×2 网格+无横向溢出、子任务表单全宽无重叠） |
+| 部署插曲 | — | 系统 `tcb` 命令失效（早上还可用，原因未查明，疑 npm 全局环境变化），改用 `npx -y -p @cloudbase/cli tcb` 等效替代 |
+
 ### 9.7 与既有功能的关系
 
 - 本机 Express 后端（v1.2 `server.js` + `BackendSync`）继续保留作本机备份；云端同步与其并存互不影响

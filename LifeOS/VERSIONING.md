@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.0.0`
-Latest released version: `5.0.0`（2026-07-22 发布，设备管理：注册与心跳 / 设备列表 / 休眠唤醒 / 软吊销删除）
+Current source version: `5.0.1`
+Latest released version: `5.0.1`（2026-07-24 发布，移动端 UI 适配三修复：心情网格 / 子任务表单 / 时间轴页）
 
 版本号格式：
 
@@ -79,6 +79,7 @@ LifeOS 示例：
 | v4.0.4 | — | 2026-07-22 | v3 | bug修复：循环任务副本跨设备竞态（确定性 ID 收敛 + 每链仅最新实例生成）；「添加子任务」改虚线虚位行 |
 | v4.1.1 | — | 2026-07-22 | v3 | 微调：AI 规划 plan prompt 加「返回前自查」自检指令；同批完成 kimi-for-coding-highspeed 对比测试（0 任务且慢，不采用，维持 mimo）；PRD 新增 §4.1.13 设备管理（F-109~F-112，规划 v5.0.0） |
 | **v5.0.0** | — | **2026-07-22** | v3 | 大版本：设备管理（F-109 设备注册与心跳 / F-110 设备列表 / F-111 休眠唤醒 / F-112 软吊销删除）；云端新增 devices 集合（CloudBase CLI 创建 + ModifySafeRule 配规则，Supabase 建表语句备入 supabase-setup.sql）；设置页「设备管理」卡片；sync-merge 测试 19 → 25 |
+| v5.0.1 | — | 2026-07-24 | v3 | bug修复：移动端三处 UI——回顾心情 4×2 网格（含日期栏横向溢出连带修复）、子任务表单隐式 grid 列重叠、时间轴页缺 viewport meta 致全页无移动端适配（补 meta + 预计/实际 Tab 切换 + 时间格压缩） |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

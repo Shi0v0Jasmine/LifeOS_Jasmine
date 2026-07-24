@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- 强制不缓存，避免旧版本弹窗残留 -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
@@ -208,11 +209,25 @@
             width: var(--event-width, calc(100% - 8px)) !important;
         }
 
+        /* 手机端栏切换 Tab：桌面端隐藏（双栏并排） */
+        .timeline-mobile-tabs { display: none; }
+
         @media (max-width: 768px) {
             .date-nav-bar { padding: 10px 12px; gap: 6px; }
             .date-text { font-size: 0.9rem; min-width: 120px; }
             .view-toggle-group { margin-left: 0; width: 100%; justify-content: flex-end; margin-top: 6px; }
             .day-stats-bar { grid-template-columns: repeat(2, 1fr); }
+
+            /* 预计/实际 单栏 + Tab 切换 */
+            .timeline-mobile-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+            .timeline-mobile-tab { flex: 1; padding: 10px 8px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.85rem; font-family: var(--font-sans); color: var(--text-secondary); }
+            .timeline-mobile-tab.active { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
+            .mobile-col-hidden { display: none; }
+
+            /* 时间格压缩：槽高 40→30px；半小时标签隔行隐藏（整点仍可见，槽位仍可点击） */
+            .time-slot { height: 30px; }
+            .time-label { height: 30px; font-size: 0.62rem; }
+            .time-label:nth-child(even) { visibility: hidden; }
         }
     </style>
 </head>
@@ -285,8 +300,14 @@
                     </div>
                 </section>
 
+                <!-- 手机端：预计/实际 栏切换 Tab（桌面端隐藏，双栏并排） -->
+                <div class="timeline-mobile-tabs">
+                    <button :class="['timeline-mobile-tab', { active: mobileTab === 'planned' }]" @click="mobileTab = 'planned'">📋 预计安排（{{ plannedEvents.length }}）</button>
+                    <button :class="['timeline-mobile-tab', { active: mobileTab === 'actual' }]" @click="mobileTab = 'actual'">✓ 实际安排（{{ actualEvents.length }}）</button>
+                </div>
+
                 <section class="timeline-container">
-                    <div class="timeline-column">
+                    <div class="timeline-column" :class="{ 'mobile-col-hidden': mobileTab !== 'planned' }">
                         <div class="column-header">
                             <span class="column-icon">📋</span>
                             <span class="column-title">预计安排</span>
@@ -317,7 +338,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="timeline-column">
+                    <div class="timeline-column" :class="{ 'mobile-col-hidden': mobileTab !== 'actual' }">
                         <div class="column-header">
                             <span class="column-icon">✓</span>
                             <span class="column-title">实际安排</span>
@@ -625,6 +646,7 @@
                 const currentDate = ref(LifeOS.Utils.formatDate());
                 const dateInput = ref(currentDate.value);
                 const viewMode = ref('day');
+                const mobileTab = ref('actual'); // 手机端单栏 Tab：默认看「实际安排」（桌面端忽略此状态）
                 const currentYear = ref(new Date().getFullYear());
                 const currentMonth = ref(new Date().getMonth());
                 const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -1311,7 +1333,7 @@
                 onUnmounted(() => { if (timerInterval) clearInterval(timerInterval); });
 
                 return {
-                    currentDate, dateInput, viewMode, currentYear, currentMonth, weekdays,
+                    currentDate, dateInput, viewMode, currentYear, currentMonth, weekdays, mobileTab,
                     isToday, currentDateDisplay, changeDate, goToday, onDateInput, selectDate,
                     changeMonth, monthDays,
                     timeSlots, plannedEvents, actualEvents, todayTasks, schedulableTasks, dragOverSlotKey,

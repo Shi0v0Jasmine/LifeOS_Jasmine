@@ -34,6 +34,18 @@
         .emotion-btn.selected { border-color: var(--color-water-deep); background: var(--color-water-light); transform: scale(1.1); box-shadow: 0 0 12px rgba(125, 211, 252, 0.3); }
         .emotion-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
 
+        /* 手机端：8 个心情固定 4×2 网格，避免 flex 换行成 7+1 的参差布局 */
+        @media (max-width: 480px) {
+            .emotion-options { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 4px; justify-items: center; }
+            .emotion-btn { width: 44px; height: 44px; }
+            /* 日期导航行允许换行收缩，否则 min-width:200px 会撑出横向滚动 */
+            .date-nav { flex-wrap: wrap; gap: 8px; }
+            .date-display { min-width: 0; font-size: 1.1rem; }
+            .date-input { max-width: 150px; }
+            /* 四栏复盘手机单列 */
+            .review-grid { grid-template-columns: 1fr; }
+        }
+
         /* 四栏复盘卡片 */
         .review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         .review-card {

@@ -2495,6 +2495,15 @@ body::before {
     .add-subtask-form {
         grid-template-columns: 1fr;
     }
+    /* 单列 grid 下必须重置桌面的显式归位，否则 grid-column:2 会
+       创建隐式第二列，导致日期/备注重叠、按钮被压成竖排 */
+    .add-subtask-form .subtask-input-title,
+    .add-subtask-form .subtask-input-date,
+    .add-subtask-form .subtask-input-note,
+    .add-subtask-form .add-subtask-actions {
+        grid-column: 1 / -1;
+        grid-row: auto;
+    }
     .ai-suggestion-item {
         flex-wrap: wrap;
     }
