@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.0.2`
-Latest released version: `5.0.2`（2026-07-24 发布，移动端子任务表单纤细化）
+Current source version: `5.0.3`
+Latest released version: `5.0.3`（2026-07-24 发布，子任务日期框 iOS 空白占位修复）
 
 版本号格式：
 
@@ -81,6 +81,7 @@ LifeOS 示例：
 | **v5.0.0** | — | **2026-07-22** | v3 | 大版本：设备管理（F-109 设备注册与心跳 / F-110 设备列表 / F-111 休眠唤醒 / F-112 软吊销删除）；云端新增 devices 集合（CloudBase CLI 创建 + ModifySafeRule 配规则，Supabase 建表语句备入 supabase-setup.sql）；设置页「设备管理」卡片；sync-merge 测试 19 → 25 |
 | v5.0.1 | — | 2026-07-24 | v3 | bug修复：移动端三处 UI——回顾心情 4×2 网格（含日期栏横向溢出连带修复）、子任务表单隐式 grid 列重叠、时间轴页缺 viewport meta 致全页无移动端适配（补 meta + 预计/实际 Tab 切换 + 时间格压缩） |
 | v5.0.2 | — | 2026-07-24 | v3 | 微调：移动端子任务表单纤细化（输入框/按钮/留白整体缩小一号，字号与虚线入口对齐 0.82rem） |
+| v5.0.3 | — | 2026-07-24 | v3 | bug修复：iOS Safari 小字号 date 输入框不渲染占位文字（子任务日期框变白板），改 text/date 聚焦切换模式 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

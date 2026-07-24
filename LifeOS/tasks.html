@@ -466,7 +466,10 @@
                         <!-- 添加子任务表单 -->
                         <div v-if="showAddSubtask" class="add-subtask-form">
                             <input type="text" v-model="newSubtask.title" placeholder="子任务标题" class="subtask-input-title">
-                            <input type="date" v-model="newSubtask.deadline" placeholder="截止日期" class="subtask-input-date">
+                            <!-- iOS Safari 对小字号 date 输入框不渲染占位文字（显示为无标识白框）。
+                                 平时以 text 显示占位提示，聚焦时再切换为原生日期选择 -->
+                            <input type="text" v-model="newSubtask.deadline" placeholder="截止日期（可选）" class="subtask-input-date"
+                                   onfocus="this.type='date'" onblur="if(!this.value){this.type='text'}">
                             <input type="text" v-model="newSubtask.note" placeholder="备注" class="subtask-input-note">
                             <div class="add-subtask-actions">
                                 <button type="button" class="btn-sm btn-primary" @click="addSubtask">保存</button>
