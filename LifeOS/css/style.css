@@ -2504,6 +2504,20 @@ body::before {
         grid-column: 1 / -1;
         grid-row: auto;
     }
+    /* 子任务表单纤细化（v5.0.2）：比主表单小一号，视觉上从属于任务表单 */
+    .add-subtask-form {
+        padding: 10px;
+        gap: 6px;
+    }
+    .add-subtask-form input {
+        padding: 7px 10px;
+        font-size: 0.82rem;
+    }
+    .add-subtask-actions .btn-primary,
+    .add-subtask-actions .btn-secondary {
+        padding: 6px 16px;
+        font-size: 0.8rem;
+    }
     .ai-suggestion-item {
         flex-wrap: wrap;
     }
