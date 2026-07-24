@@ -246,6 +246,35 @@ async function testHabitStreakSkipsFutureRecordsAndStopsAtMissedToday() {
     assert.strictEqual(streak, 0, 'an explicit missed record today should break the current streak');
 }
 
+async function testRecurringInstanceIdIsDeterministic() {
+    const LifeOS = loadLifeOS();
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+
+    const source = await LifeOS.Task.create({
+        title: '日语学习',
+        deadline: '2027-07-01',
+        date: '2026-07-09',
+        isRecurring: true,
+        recurringRule: { type: 'daily' }
+    });
+
+    // 模拟两台设备各自为同一源实例补同一天副本：应收敛为同一 ID（upsert 合并），而非两条
+    const copyA = await LifeOS.Task._generateRecurringTaskInstance(source, '2026-07-21');
+    const copyB = await LifeOS.Task._generateRecurringTaskInstance(source, '2026-07-21');
+
+    assert.strictEqual(copyA.id, copyB.id, 'same source + same date should produce deterministic id');
+    assert.strictEqual(copyA.id, `${source.id}_2026-07-21`);
+
+    const sameDay = await LifeOS.Task.getByDate('2026-07-21');
+    const copies = sameDay.filter(t => t.title === '日语学习' && !t.isSubtask);
+    assert.strictEqual(copies.length, 1, 'cross-device generation must converge to a single record');
+
+    // 不同日期仍生成不同实例
+    const nextDay = await LifeOS.Task._generateRecurringTaskInstance(source, '2026-07-22');
+    assert.notStrictEqual(nextDay.id, copyA.id);
+}
+
 async function testRecurringTaskUndoRemovesGeneratedNextTask() {
     const LifeOS = loadLifeOS();
     await LifeOS.Database.init();
@@ -315,7 +344,8 @@ async function testAIClientSendsOpenAICompatibleChatRequest() {
     const text = await LifeOS.AIClient.complete('Ping', {
         retries: 0,
         temperature: 0.2,
-        maxTokens: 12
+        maxTokens: 12,
+        proxyUrl: '' // 强制直连：本用例断言直连 endpoint 的请求格式（代理路径由 settings 覆盖语义测试）
     });
     const history = await LifeOS.Settings.get('apiHistory', []);
 
@@ -374,6 +404,44 @@ async function testAIClientRetriesRetryableFailures() {
     assert.strictEqual(history[0].attempts, 2);
 }
 
+async function testAIClientRoutesViaConfiguredProxy() {
+    const calls = [];
+    const LifeOS = loadLifeOS((url, options) => {
+        calls.push({ url, options, body: JSON.parse(options.body) });
+        return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            text: () => Promise.resolve(JSON.stringify({
+                choices: [{ message: { role: 'assistant', content: 'proxied' } }]
+            }))
+        });
+    });
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('apiBaseUrl', 'https://api.example.test/v1');
+    await LifeOS.Settings.set('apiKey', 'test-key');
+    await LifeOS.Settings.set('apiModel', 'test-model');
+    await LifeOS.Settings.set('aiProxyUrl', 'https://proxy.example.test/ai');
+
+    const text = await LifeOS.AIClient.complete('Ping', { retries: 0 });
+
+    assert.strictEqual(text, 'proxied');
+    assert.strictEqual(calls.length, 1, 'should send exactly one request');
+    assert.strictEqual(calls[0].url, 'https://proxy.example.test/ai', 'request should go to proxy URL');
+    assert.strictEqual(calls[0].options.headers.Authorization, undefined, 'proxy path must not leak Authorization header');
+    assert.strictEqual(calls[0].body.endpoint, 'https://api.example.test/v1/chat/completions', 'proxy body carries upstream endpoint');
+    assert.strictEqual(calls[0].body.apiKey, 'test-key', 'proxy body carries apiKey');
+    assert.strictEqual(calls[0].body.payload.model, 'test-model', 'proxy body carries chat payload');
+
+    // 置空 aiProxyUrl（空字符串）= 强制直连
+    calls.length = 0;
+    await LifeOS.Settings.set('aiProxyUrl', '');
+    await LifeOS.AIClient.complete('Ping', { retries: 0 });
+    assert.strictEqual(calls[0].url, 'https://api.example.test/v1/chat/completions', 'empty aiProxyUrl forces direct connection');
+    assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer test-key');
+}
+
 async function testAIClientRequiresConfiguration() {
     const LifeOS = loadLifeOS(() => {
         throw new Error('fetch should not be called without config');
@@ -392,10 +460,12 @@ const tests = [
     testRecurringEventsDoNotAppearBeforeStartDate,
     testUpdatingRecurringEventToNonRecurringClearsRecurringFlag,
     testHabitStreakSkipsFutureRecordsAndStopsAtMissedToday,
+    testRecurringInstanceIdIsDeterministic,
     testRecurringTaskUndoRemovesGeneratedNextTask,
     testReviewUpdatePreservesCreatedAt,
     testAIClientSendsOpenAICompatibleChatRequest,
     testAIClientRetriesRetryableFailures,
+    testAIClientRoutesViaConfiguredProxy,
     testAIClientRequiresConfiguration
 ];
 

@@ -1,6 +1,6 @@
-const STATIC_CACHE = 'lifeos-static-v20260709-1';
-const DATA_CACHE = 'lifeos-data-v20260709-1';
-const RUNTIME_CACHE = 'lifeos-runtime-v20260709-1';
+const STATIC_CACHE = 'lifeos-static-v20260722-2';
+const DATA_CACHE = 'lifeos-data-v20260721-5';
+const RUNTIME_CACHE = 'lifeos-runtime-v20260721-5';
 
 const STATIC_ASSETS = [
     './',
@@ -15,6 +15,8 @@ const STATIC_ASSETS = [
     './test.html',
     './css/style.css',
     './js/core.js',
+    './js/sync.js',
+    './js/mobile-nav.js',
     './js/pwa.js',
     './assets/icons/lifeos-app.svg',
     './assets/icons/blue-moon-flower.svg',

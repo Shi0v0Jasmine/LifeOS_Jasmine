@@ -6,9 +6,11 @@
     <meta name="theme-color" content="#7DD3FC">
     <link rel="manifest" href="manifest.webmanifest">
     <title>Life OS — 任务</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=1.2">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
-    <script src="js/core.js"></script>
+    <script src="js/core.js?v=1.2"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/mobile-nav.js"></script>
     <script src="js/pwa.js"></script>
 </head>
 <body>
@@ -29,6 +31,15 @@
                 <div class="header-actions">
                     <button class="action-btn" @click="showFilter = !showFilter">
                         <span>🔖</span> {{ showFilter ? '隐藏筛选' : '显示筛选' }}
+                    </button>
+                    <button
+                        class="action-btn"
+                        :disabled="offlineMode"
+                        :aria-expanded="showNLPanel"
+                        aria-controls="nl-panel"
+                        @click="showNLPanel = !showNLPanel"
+                    >
+                        <span>📝</span> {{ showNLPanel ? '收起' : '自然语言创建' }}
                     </button>
                     <button class="action-btn primary" @click="openCreate">
                         <span>➕</span> 添加任务
@@ -60,6 +71,72 @@
                 </div>
             </section>
 
+            <!-- 自然语言创建任务面板 -->
+            <section v-if="showNLPanel" id="nl-panel" class="nl-panel">
+                <div class="nl-panel-header">
+                    <h3 class="nl-panel-title">📝 自然语言创建</h3>
+                    <button
+                        class="nl-close-btn"
+                        aria-label="关闭自然语言创建面板"
+                        @click="showNLPanel = false"
+                    >✕</button>
+                </div>
+
+                <div class="nl-input-group">
+                    <label for="nl-input" class="nl-input-label">描述你想安排的事情</label>
+                    <textarea
+                        id="nl-input"
+                        v-model="nlInput"
+                        class="nl-textarea"
+                        placeholder="例如：明天下午3点去图书馆还书，然后买一杯咖啡..."
+                        rows="3"
+                        :disabled="nlLoading"
+                    ></textarea>
+                    <div class="nl-options">
+                        <label class="nl-checkbox">
+                            <input v-model="nlGenerateSubtasks" type="checkbox" :disabled="nlLoading">
+                            <span>自动生成子任务</span>
+                        </label>
+                        <button
+                            class="btn-primary nl-generate-btn"
+                            :disabled="!nlInput.trim() || nlLoading || offlineMode"
+                            @click="generateNLPlan"
+                        >
+                            <span v-if="nlLoading">⏳ 生成中...</span>
+                            <span v-else>🧠 生成计划</span>
+                        </button>
+                    </div>
+                    <p v-if="nlError" class="nl-error" role="alert">{{ nlError }}</p>
+                </div>
+
+                <div v-if="nlLoading" class="nl-skeleton">
+                    <div class="nl-skeleton-line nl-skeleton-short"></div>
+                    <div class="nl-skeleton-line"></div>
+                    <div class="nl-skeleton-line nl-skeleton-medium"></div>
+                </div>
+
+                <div v-else-if="nlPlan.length" class="nl-plan-preview">
+                    <h4 class="nl-plan-preview-title">📋 计划预览 · {{ nlPlan.length }} 项（可编辑）</h4>
+                    <div v-for="(task, idx) in nlPlan" :key="idx" class="nl-plan-task">
+                        <div class="nl-plan-task-header">
+                            <input v-model="task.title" class="nl-plan-input-title" placeholder="任务标题">
+                            <input v-model="task.deadline" type="date" class="nl-plan-input-date">
+                        </div>
+                        <textarea v-model="task.description" class="nl-plan-input-desc" placeholder="描述" rows="2"></textarea>
+                        <div v-if="task.subtasks && task.subtasks.length" class="nl-plan-subtasks">
+                            <div v-for="(sub, sIdx) in task.subtasks" :key="sIdx" class="nl-plan-subtask">
+                                <input v-model="sub.title" class="nl-plan-subtask-input-title" placeholder="子任务标题">
+                                <input v-model="sub.deadline" type="date" class="nl-plan-subtask-input-date">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="nl-plan-actions">
+                        <button class="btn-secondary" @click="nlPlan = []; nlError = ''">返回修改</button>
+                        <button class="btn-primary" @click="confirmNLPlan">✅ 创建 {{ nlPlan.length }} 个任务</button>
+                    </div>
+                </div>
+            </section>
+
             <!-- 四象限布局 -->
             <section class="quadrants-grid">
                 <!-- 第一象限：重要·紧急 -->
@@ -67,7 +144,7 @@
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🔴</span>
                         <span class="quadrant-title">重要 · 紧急</span>
-                        <span class="quadrant-count">{{ q1Tasks.length }}</span>
+                        <span class="quadrant-count">{{ q1ParentTasks.length }}</span>
                     </div>
                     <div class="quadrant-body">
                         <div 
@@ -106,6 +183,9 @@
                                 </div>
                                 <span class="countdown-text">{{ getDeadlineText(task) }}</span>
                             </div>
+                            <div v-if="!task.isSubtask && getSubtaskProgress(task)" class="subtask-progress">
+                                <span class="subtask-progress-text">子任务 {{ getSubtaskProgress(task) }}</span>
+                            </div>
                         </div>
                         <div v-if="!q1Tasks.length" class="quadrant-empty">
                             <p>暂无任务<br>快来规划你的任务吧~</p>
@@ -118,7 +198,7 @@
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🔵</span>
                         <span class="quadrant-title">重要 · 不紧急</span>
-                        <span class="quadrant-count">{{ q2Tasks.length }}</span>
+                        <span class="quadrant-count">{{ q2ParentTasks.length }}</span>
                     </div>
                     <div class="quadrant-body">
                         <div 
@@ -157,6 +237,9 @@
                                 </div>
                                 <span class="countdown-text">{{ getDeadlineText(task) }}</span>
                             </div>
+                            <div v-if="!task.isSubtask && getSubtaskProgress(task)" class="subtask-progress">
+                                <span class="subtask-progress-text">子任务 {{ getSubtaskProgress(task) }}</span>
+                            </div>
                         </div>
                         <div v-if="!q2Tasks.length" class="quadrant-empty">
                             <p>暂无任务<br>快来规划你的任务吧~</p>
@@ -169,7 +252,7 @@
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🟡</span>
                         <span class="quadrant-title">紧急 · 不重要</span>
-                        <span class="quadrant-count">{{ q3Tasks.length }}</span>
+                        <span class="quadrant-count">{{ q3ParentTasks.length }}</span>
                     </div>
                     <div class="quadrant-body">
                         <div 
@@ -208,6 +291,9 @@
                                 </div>
                                 <span class="countdown-text">{{ getDeadlineText(task) }}</span>
                             </div>
+                            <div v-if="!task.isSubtask && getSubtaskProgress(task)" class="subtask-progress">
+                                <span class="subtask-progress-text">子任务 {{ getSubtaskProgress(task) }}</span>
+                            </div>
                         </div>
                         <div v-if="!q3Tasks.length" class="quadrant-empty">
                             <p>暂无任务<br>快来规划你的任务吧~</p>
@@ -220,7 +306,7 @@
                     <div class="quadrant-header">
                         <span class="quadrant-icon">⚪</span>
                         <span class="quadrant-title">不重要 · 不紧急</span>
-                        <span class="quadrant-count">{{ q4Tasks.length }}</span>
+                        <span class="quadrant-count">{{ q4ParentTasks.length }}</span>
                     </div>
                     <div class="quadrant-body">
                         <div 
@@ -258,6 +344,9 @@
                                     <div class="countdown-fill" :style="{ width: getDeadlinePercent(task) + '%', background: getDeadlineColor(task) }"></div>
                                 </div>
                                 <span class="countdown-text">{{ getDeadlineText(task) }}</span>
+                            </div>
+                            <div v-if="!task.isSubtask && getSubtaskProgress(task)" class="subtask-progress">
+                                <span class="subtask-progress-text">子任务 {{ getSubtaskProgress(task) }}</span>
                             </div>
                         </div>
                         <div v-if="!q4Tasks.length" class="quadrant-empty">
@@ -333,12 +422,106 @@
                             长期任务（截止日期超过7天）会自动设为循环任务
                         </p>
                     </div>
+
+                    <!-- AI 拆解按钮（仅亲任务） -->
+                    <div v-if="!editingTask.isSubtask" class="form-group ai-breakdown-group">
+                        <button
+                            type="button"
+                            class="btn-secondary ai-breakdown-btn"
+                            :disabled="!taskForm.title.trim() || aiLoading || offlineMode"
+                            @click="runAIBreakdown"
+                        >
+                            <span v-if="aiLoading">⏳ 拆解中...</span>
+                            <span v-else-if="offlineMode">🔌 离线模式不可用</span>
+                            <span v-else>🧠 AI 拆解</span>
+                        </button>
+                        <p class="ai-breakdown-hint">{{ aiBreakdownHint }}</p>
+                    </div>
+
+                    <!-- AI 拆解建议列表 -->
+                    <div v-if="aiSuggestions.length && !editingTask.isSubtask" class="ai-suggestions">
+                        <div class="ai-suggestions-header">
+                            <label>
+                                <input type="checkbox" v-model="aiAddAll"> 全选
+                            </label>
+                            <span class="ai-suggestions-title">AI 建议的子任务</span>
+                        </div>
+                        <div
+                            v-for="(s, index) in aiSuggestions" :key="index"
+                            class="ai-suggestion-item"
+                        >
+                            <input type="checkbox" v-model="s.selected">
+                            <input type="text" v-model="s.title" placeholder="子任务标题" class="ai-suggestion-title">
+                            <input type="date" v-model="s.deadline" class="ai-suggestion-date">
+                            <input type="text" v-model="s.note" placeholder="备注" class="ai-suggestion-note">
+                        </div>
+                    </div>
+
+                    <!-- 子任务列表（仅亲任务） -->
+                    <div v-if="!editingTask.isSubtask" class="form-group subtasks-section">
+                        <div class="subtasks-header">
+                            <label>子任务</label>
+                        </div>
+
+                        <!-- 添加子任务表单 -->
+                        <div v-if="showAddSubtask" class="add-subtask-form">
+                            <input type="text" v-model="newSubtask.title" placeholder="子任务标题" class="subtask-input-title">
+                            <input type="date" v-model="newSubtask.deadline" placeholder="截止日期" class="subtask-input-date">
+                            <input type="text" v-model="newSubtask.note" placeholder="备注" class="subtask-input-note">
+                            <div class="add-subtask-actions">
+                                <button type="button" class="btn-sm btn-primary" @click="addSubtask">保存</button>
+                                <button type="button" class="btn-sm btn-secondary" @click="showAddSubtask = false">取消</button>
+                            </div>
+                        </div>
+
+                        <!-- 子任务列表 -->
+                        <div v-if="subtasks.length" class="subtasks-list">
+                            <div
+                                v-for="sub in subtasks" :key="sub.id"
+                                class="subtask-item"
+                                :class="{ completed: sub.completed }"
+                            >
+                                <div class="subtask-checkbox" @click.stop="toggleSubtaskComplete(sub)">
+                                    <span v-if="sub.completed">✓</span>
+                                </div>
+                                <div class="subtask-info">
+                                    <div class="subtask-title">{{ sub.title }}</div>
+                                    <div v-if="sub.deadline" class="subtask-deadline">截止：{{ sub.deadline }}</div>
+                                    <div v-if="sub.note" class="subtask-note">{{ sub.note }}</div>
+                                </div>
+                                <div class="subtask-actions">
+                                    <button type="button" class="btn-sm btn-danger" @click.stop="deleteSubtask(sub)">删除</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="subtasks-empty">暂无子任务</div>
+
+                        <!-- 添加入口：虚线虚位行，作为列表的延续而非独立按钮 -->
+                        <button v-if="!showAddSubtask" type="button" class="btn-add-subtask" @click="showAddSubtask = true">＋ 添加子任务</button>
+                    </div>
                 </div>
                 <div class="modal-actions">
                     <button v-if="editingTask.id" class="btn-danger" @click="deleteTask">删除</button>
                     <div class="spacer"></div>
                     <button class="btn-secondary" @click="closeTaskModal">取消</button>
                     <button class="btn-primary" @click="saveTask">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 子任务全部完成确认弹窗 -->
+        <div v-if="showSubtaskCompleteConfirm" class="modal-overlay" @click.self="showSubtaskCompleteConfirm = false">
+            <div class="modal confirm-modal">
+                <div class="modal-header">
+                    <h3>同步完成亲任务</h3>
+                    <button class="close-btn" @click="showSubtaskCompleteConfirm = false">✕</button>
+                </div>
+                <div class="confirm-content">
+                    <p>子任务已全部完成，是否确定同步完成「{{ pendingParentTitle }}」？</p>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" @click="showSubtaskCompleteConfirm = false">暂不同步</button>
+                    <button class="btn-primary" @click="confirmCompleteParent">确定完成</button>
                 </div>
             </div>
         </div>
@@ -365,7 +548,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted, watch } = Vue;
 
         const Sidebar = {
             name: 'Sidebar',
@@ -408,9 +591,11 @@
             `
         };
 
+        LifeOS.Sync.init();
         createApp({
             components: { Sidebar },
             setup() {
+                const { watch } = Vue;
                 const allTasks = ref([]);
                 const showFilter = ref(false);
                 const dateFilter = ref('today');
@@ -423,6 +608,27 @@
                 const encourageChar = ref({});
                 const encourageMessage = ref('');
                 const lastRate = ref(0);  // 上次记录的完成率，用于检测跨越阈值
+
+                // 自然语言创建任务相关
+                const showNLPanel = ref(false);
+                const nlInput = ref('');
+                const nlGenerateSubtasks = ref(true);
+                const nlLoading = ref(false);
+                const nlError = ref('');
+                const nlPlan = ref([]);
+
+                // 子任务相关
+                const subtasks = ref([]);
+                const showAddSubtask = ref(false);
+                const newSubtask = ref({ title: '', deadline: '', note: '' });
+                const aiLoading = ref(false);
+                const aiSuggestions = ref([]);
+                const aiAddAll = ref(false);
+                const aiBreakdownHint = ref('AI 会根据标题和描述生成建议子任务');
+                const offlineMode = ref(false);
+                const showSubtaskCompleteConfirm = ref(false);
+                const pendingParentId = ref('');
+                const pendingParentTitle = ref('');
 
                 const dateFilters = [
                     { id: 'today', name: '今日' },
@@ -506,7 +712,7 @@
 
                 const todayTasks = computed(() => {
                     const today = LifeOS.Utils.formatDate();
-                    return visibleTasks.value.filter(t => t.date === today);
+                    return visibleTasks.value.filter(t => t.date === today && !t.isSubtask);
                 });
 
                 // 四象限分组
@@ -514,6 +720,11 @@
                 const q2Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'important-not-urgent'));
                 const q3Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'urgent-not-important'));
                 const q4Tasks = computed(() => filteredTasks.value.filter(t => t.quadrant === 'not-urgent-not-important'));
+
+                const q1ParentTasks = computed(() => q1Tasks.value.filter(t => !t.isSubtask));
+                const q2ParentTasks = computed(() => q2Tasks.value.filter(t => !t.isSubtask));
+                const q3ParentTasks = computed(() => q3Tasks.value.filter(t => !t.isSubtask));
+                const q4ParentTasks = computed(() => q4Tasks.value.filter(t => !t.isSubtask));
 
                 // 加载任务
                 const loadTasks = async () => {
@@ -523,38 +734,33 @@
                     
                     // 为循环任务创建今日副本（如果不存在）
                     // 只从过去的未完成循环任务补今天，避免明天副本反向生成今天的重复任务
+                    // 多端同步补充（v4.0.4）：
+                    // 1) 同一循环链（标题/截止/象限/类别相同）只取「最新实例」作为生成源，
+                    //    避免链上每个历史实例各自触发补副本；
+                    // 2) _generateRecurringTaskInstance 使用确定性 ID（源实例ID_日期），
+                    //    两台设备同时打开也生成同一条，云端 upsert 收敛，不再重复
+                    const chainKeyOf = (t) => [t.title || '', t.deadline || '', t.quadrant || '', t.category || ''].join('|');
+                    const latestByChain = {};
                     for (const task of allTasksData) {
-                        if (task.isRecurring && task.recurringRule && task.date && task.date < today && !task.completed) {
-                            // 检查今日是否已有该任务
-                            const todayTasks = allTasksData.filter(t => (
-                                t.date === today &&
-                                t.isRecurring &&
-                                t.recurringRule &&
-                                getRecurringGroupKey(t) === [
-                                    today,
-                                    task.title || '',
-                                    task.deadline || '',
-                                    task.quadrant || '',
-                                    task.category || ''
-                                ].join('|')
-                            ));
-                            if (todayTasks.length === 0) {
-                                // 创建今日副本
-                                const newTask = {
-                                    ...task,
-                                    id: LifeOS.Utils.generateId(),
-                                    date: today,
-                                    completed: false,
-                                    completedAt: null,
-                                    generatedFromTaskId: task.id,
-                                    recurringInstanceDate: today,
-                                    createdAt: LifeOS.Utils.now(),
-                                    updatedAt: LifeOS.Utils.now()
-                                };
-                                delete newTask.completedAt;
-                                const createdTask = await LifeOS.Task.create(newTask);
-                                allTasksData.push(createdTask);
+                        if (task.isRecurring && task.recurringRule && !task.isSubtask && task.date && task.date < today && !task.completed) {
+                            const key = chainKeyOf(task);
+                            if (!latestByChain[key] || task.date > latestByChain[key].date) {
+                                latestByChain[key] = task;
                             }
+                        }
+                    }
+                    for (const task of Object.values(latestByChain)) {
+                        // 检查今日是否已有该任务
+                        const todayTasks = allTasksData.filter(t => (
+                            t.date === today &&
+                            t.isRecurring &&
+                            t.recurringRule &&
+                            chainKeyOf(t) === chainKeyOf(task)
+                        ));
+                        if (todayTasks.length === 0) {
+                            const createdTask = await LifeOS.Task._generateRecurringTaskInstance(task, today);
+                            await LifeOS.Task._copyNonRecurringSubtasks(task.id, createdTask.id, today);
+                            allTasksData.push(createdTask);
                         }
                     }
                     
@@ -662,6 +868,11 @@
                 // 添加/编辑任务
                 const openCreate = () => {
                     editingTask.value = {};
+                    subtasks.value = [];
+                    showAddSubtask.value = false;
+                    newSubtask.value = { title: '', deadline: '', note: '' };
+                    aiSuggestions.value = [];
+                    aiAddAll.value = false;
                     const today = LifeOS.Utils.formatDate();
                     taskForm.value = {
                         title: '',
@@ -675,8 +886,16 @@
                     showTaskModal.value = true;
                 };
 
-                const openDetail = (task) => {
+                const openDetail = async (task) => {
                     editingTask.value = task;
+                    subtasks.value = [];
+                    showAddSubtask.value = false;
+                    newSubtask.value = { title: '', deadline: '', note: '' };
+                    aiSuggestions.value = [];
+                    aiAddAll.value = false;
+                    if (!task.isSubtask) {
+                        subtasks.value = await LifeOS.Task.getSubtasks(task.id);
+                    }
                     taskForm.value = {
                         title: task.title || '',
                         description: task.description || '',
@@ -692,6 +911,9 @@
                 const closeTaskModal = () => {
                     showTaskModal.value = false;
                     editingTask.value = {};
+                    subtasks.value = [];
+                    showAddSubtask.value = false;
+                    aiSuggestions.value = [];
                 };
 
                 const saveTask = async () => {
@@ -731,11 +953,157 @@
                 };
 
                 const deleteTask = async () => {
-                    if (!confirm('确定删除此任务？')) return;
+                    const subCount = editingTask.value.isSubtask ? 0 : subtasks.value.length;
+                    const confirmMsg = subCount > 0
+                        ? `确定删除此任务？将同时删除 ${subCount} 个子任务。`
+                        : '确定删除此任务？';
+                    if (!confirm(confirmMsg)) return;
                     await LifeOS.Task.delete(editingTask.value.id);
                     await loadTasks();
                     closeTaskModal();
                 };
+
+                // 子任务操作
+                const addSubtask = async () => {
+                    if (!newSubtask.value.title.trim()) {
+                        alert('请输入子任务标题');
+                        return;
+                    }
+                    await LifeOS.Task.createSubtask(editingTask.value.id, {
+                        title: newSubtask.value.title,
+                        deadline: newSubtask.value.deadline || null,
+                        note: newSubtask.value.note,
+                        priority: taskForm.value.priority
+                    });
+                    newSubtask.value = { title: '', deadline: '', note: '' };
+                    showAddSubtask.value = false;
+                    subtasks.value = await LifeOS.Task.getSubtasks(editingTask.value.id);
+                    await loadTasks();
+                };
+
+                const deleteSubtask = async (sub) => {
+                    if (!confirm(`确定删除子任务「${sub.title}」？`)) return;
+                    await LifeOS.Task.deleteSubtask(sub.id);
+                    subtasks.value = await LifeOS.Task.getSubtasks(editingTask.value.id);
+                    await loadTasks();
+                };
+
+                const toggleSubtaskComplete = async (sub) => {
+                    const result = await LifeOS.Task.toggleSubtaskComplete(sub.id);
+                    if (!result) return;
+                    subtasks.value = await LifeOS.Task.getSubtasks(editingTask.value.id);
+                    await loadTasks();
+                    if (result.allCompleted) {
+                        pendingParentId.value = sub.parentId;
+                        pendingParentTitle.value = result.parentTitle;
+                        showSubtaskCompleteConfirm.value = true;
+                    }
+                };
+
+                const confirmCompleteParent = async () => {
+                    showSubtaskCompleteConfirm.value = false;
+                    if (pendingParentId.value) {
+                        const prevRate = completionRate.value;
+                        await LifeOS.Task.toggleComplete(pendingParentId.value);
+                        await loadTasks();
+                        const newRate = completionRate.value;
+                        checkEncourageTrigger(prevRate, newRate);
+                    }
+                    pendingParentId.value = '';
+                    pendingParentTitle.value = '';
+                };
+
+                // AI 拆解
+                const runAIBreakdown = async () => {
+                    if (!taskForm.value.title.trim()) return;
+                    if (offlineMode.value) {
+                        aiBreakdownHint.value = '离线模式下 AI 拆解不可用';
+                        return;
+                    }
+                    aiLoading.value = true;
+                    aiBreakdownHint.value = '正在生成建议子任务...';
+                    try {
+                        const suggestions = await LifeOS.AIPlanner.breakdownTask(
+                            taskForm.value.title,
+                            taskForm.value.description
+                        );
+                        aiSuggestions.value = suggestions.map(s => ({ ...s, selected: false }));
+                        aiBreakdownHint.value = '建议已生成，请勾选要添加的子任务后保存';
+                    } catch (e) {
+                        console.error('AI 拆解失败:', e);
+                        aiBreakdownHint.value = 'AI 拆解失败：' + (e.message || '请检查 API 配置');
+                    } finally {
+                        aiLoading.value = false;
+                    }
+                };
+
+                // 自然语言生成计划
+                const generateNLPlan = async () => {
+                    if (!nlInput.value.trim()) return;
+                    if (offlineMode.value) {
+                        nlError.value = '离线模式下自然语言创建不可用';
+                        return;
+                    }
+                    nlLoading.value = true;
+                    nlError.value = '';
+                    nlPlan.value = [];
+                    try {
+                        const plan = await LifeOS.AIPlanner.createPlanFromNaturalLanguage(
+                            nlInput.value,
+                            nlGenerateSubtasks.value
+                        );
+                        nlPlan.value = Array.isArray(plan) ? plan : (plan.tasks || []);
+                        if (!nlPlan.value.length) {
+                            nlError.value = '未能从输入中识别出可执行的任务，请尝试更具体的描述';
+                        }
+                    } catch (e) {
+                        console.error('自然语言生成计划失败:', e);
+                        nlError.value = '生成计划失败：' + (e.message || '请检查 API 配置');
+                    } finally {
+                        nlLoading.value = false;
+                    }
+                };
+
+                // 确认创建自然语言计划
+                const confirmNLPlan = async () => {
+                    if (!nlPlan.value.length) return;
+                    try {
+                        await LifeOS.Task.createTasksFromPlan(nlPlan.value);
+                        nlInput.value = '';
+                        nlPlan.value = [];
+                        showNLPanel.value = false;
+                        await loadTasks();
+                    } catch (e) {
+                        console.error('创建任务失败:', e);
+                        nlError.value = '创建任务失败：' + (e.message || '请稍后重试');
+                    }
+                };
+
+                // 全选/全不选联动
+                watch(aiAddAll, (val) => {
+                    aiSuggestions.value.forEach(s => s.selected = val);
+                });
+
+                const getSubtaskProgress = (task) => {
+                    if (task.isSubtask) return '';
+                    const total = subtaskProgressMap.value[task.id];
+                    if (!total) return '';
+                    return `${total.completed}/${total.total} 完成`;
+                };
+
+                const subtaskProgressMap = computed(() => {
+                    const map = {};
+                    for (const task of allTasks.value) {
+                        if (task.isSubtask) {
+                            const pid = task.parentId;
+                            if (!pid) continue;
+                            if (!map[pid]) map[pid] = { total: 0, completed: 0 };
+                            map[pid].total++;
+                            if (task.completed) map[pid].completed++;
+                        }
+                    }
+                    return map;
+                });
 
                 // 倒计时计算
                 const getDeadlinePercent = (task) => {
@@ -762,7 +1130,10 @@
                     return `还剩 ${days} 天`;
                 };
 
-                onMounted(loadTasks);
+                onMounted(async () => {
+                    await loadTasks();
+                    offlineMode.value = await LifeOS.Settings.get('offlineMode', false);
+                });
 
                 return {
                     allTasks, showFilter, dateFilter, statusFilter,
@@ -771,11 +1142,18 @@
                     dateFilters, statusFilters, quadrantOptions,
                     visibleTasks, filteredTasks, todayTasks,
                     q1Tasks, q2Tasks, q3Tasks, q4Tasks,
+                    q1ParentTasks, q2ParentTasks, q3ParentTasks, q4ParentTasks,
                     toggleComplete, openCreate, openDetail, closeTaskModal,
                     saveTask, deleteTask, closeEncourage,
                     undoCompleteFromModal, getCompleteActionText,
                     getDeadlinePercent, getDeadlineColor, getDeadlineText,
-                    formatDate
+                    formatDate, subtasks, showAddSubtask, newSubtask,
+                    addSubtask, deleteSubtask, toggleSubtaskComplete,
+                    aiLoading, aiSuggestions, aiAddAll, aiBreakdownHint, runAIBreakdown, offlineMode,
+                    showSubtaskCompleteConfirm, pendingParentTitle, confirmCompleteParent,
+                    getSubtaskProgress,
+                    showNLPanel, nlInput, nlGenerateSubtasks, nlLoading, nlError, nlPlan,
+                    generateNLPlan, confirmNLPlan
                 };
             }
         }).mount('#app');

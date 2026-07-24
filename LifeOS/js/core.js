@@ -116,6 +116,42 @@
             return map[quadrant] || map['not-urgent-not-important'];
         },
 
+        parseJSONSafe(str, fallback = null) {
+            if (!str) return fallback;
+            const trimmed = String(str).trim();
+            try { return JSON.parse(trimmed); } catch (e) {}
+            const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (codeBlockMatch) {
+                try { return JSON.parse(codeBlockMatch[1].trim()); } catch (e) {}
+            }
+            const jsonStart = trimmed.indexOf('[');
+            const jsonEnd = trimmed.lastIndexOf(']');
+            if (jsonStart !== -1 && jsonEnd > jsonStart) {
+                try { return JSON.parse(trimmed.slice(jsonStart, jsonEnd + 1)); } catch (e) {}
+            }
+            const objStart = trimmed.indexOf('{');
+            const objEnd = trimmed.lastIndexOf('}');
+            if (objStart !== -1 && objEnd > objStart) {
+                try { return JSON.parse(trimmed.slice(objStart, objEnd + 1)); } catch (e) {}
+            }
+            return fallback;
+        },
+
+        _extractArrayFromJSON(data) {
+            if (Array.isArray(data)) return data;
+            if (data && typeof data === 'object') {
+                if (Array.isArray(data.tasks)) return data.tasks;
+                if (Array.isArray(data.plans)) return data.plans;
+                if (Array.isArray(data.result)) return data.result;
+                if (Array.isArray(data.subtasks)) return data.subtasks;
+                // 如果对象里只有一个数组值，也尝试提取
+                for (const key in data) {
+                    if (Array.isArray(data[key])) return data[key];
+                }
+            }
+            return null;
+        },
+
         markdownToHtml(markdown) {
             if (!markdown) return '';
             return markdown
@@ -135,12 +171,47 @@
     // ============================================================
     // 1. 数据库核心 (Database)
     // ============================================================
+    // 参与多端同步的业务 store（settings 为设备本地配置，不同步）
+    const SYNC_STORES = ['tasks', 'timeline', 'habits', 'habitRecords', 'reviews', 'skills', 'notes', 'characters', 'moments'];
+
     class Database {
         constructor() {
             this.dbName = 'LifeOSDB';
-            this.version = 1;
+            this.version = 3;
             this.db = null;
             this._initPromise = null;
+            this._deviceIdPromise = null;
+        }
+
+        /**
+         * 获取本设备 ID（同步打戳用）。
+         * 首次调用时从 settings 读取；不存在则生成 dev-xxxx 并持久化。
+         * 用 Promise 缓存防止并发 put 时重复生成。
+         */
+        async getDeviceId() {
+            if (this._deviceIdPromise) return this._deviceIdPromise;
+            this._deviceIdPromise = (async () => {
+                let deviceId = await this.getSetting('deviceId', null);
+                if (!deviceId) {
+                    deviceId = 'dev-' + Utils.generateId().replace(/-/g, '').slice(0, 12);
+                    await this.setSetting('deviceId', deviceId);
+                }
+                return deviceId;
+            })();
+            return this._deviceIdPromise;
+        }
+
+        /**
+         * 本地写钩子：通知 Sync 模块有本地写入（防抖后自动 push）。
+         * 失败静默，绝不影响写入本身。
+         */
+        _notifyLocalWrite(storeName) {
+            try {
+                const Sync = (typeof window !== 'undefined' && window.LifeOS) ? window.LifeOS.Sync : null;
+                if (Sync && typeof Sync.notifyLocalWrite === 'function') {
+                    Sync.notifyLocalWrite(storeName);
+                }
+            } catch (e) { /* 同步钩子失败不影响写入 */ }
         }
 
         /**
@@ -171,15 +242,21 @@
 
                 request.onupgradeneeded = (event) => {
                     const db = event.target.result;
-                    console.log('[LifeOS] IndexedDB 升级: v' + event.oldVersion + ' → v' + this.version);
-                    this._createStores(db);
+                    const oldVersion = event.oldVersion;
+                    console.log('[LifeOS] IndexedDB 升级: v' + oldVersion + ' → v' + this.version);
+                    this._createStores(db, oldVersion, event.target.transaction);
                 };
             });
 
             return this._initPromise;
         }
 
-        _createStores(db) {
+        _createStores(db, oldVersion = 0, transaction = null) {
+            // 升级前已存在的 store（数据迁移只针对这些；新建库无需迁移）
+            const preExistingStores = new Set();
+            if (db.objectStoreNames) {
+                for (let i = 0; i < db.objectStoreNames.length; i++) preExistingStores.add(db.objectStoreNames[i]);
+            }
             // timeline: 时间轴事件
             if (!db.objectStoreNames.contains('timeline')) {
                 const s = db.createObjectStore('timeline', { keyPath: 'id' });
@@ -195,6 +272,26 @@
                 s.createIndex('deadline', 'deadline', { unique: false });
                 s.createIndex('isRecurring', 'isRecurring', { unique: false });
                 s.createIndex('date', 'date', { unique: false });
+                s.createIndex('parentId', 'parentId', { unique: false });
+                s.createIndex('isSubtask', 'isSubtask', { unique: false });
+            } else if (oldVersion < 2) {
+                // v1 -> v2: 添加 parentId / isSubtask 索引并迁移旧数据
+                const s = transaction ? transaction.objectStore('tasks') : db.transaction('tasks', 'readwrite').objectStore('tasks');
+                if (!s.indexNames.contains('parentId')) s.createIndex('parentId', 'parentId', { unique: false });
+                if (!s.indexNames.contains('isSubtask')) s.createIndex('isSubtask', 'isSubtask', { unique: false });
+                if (s.openCursor) {
+                    s.openCursor().onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const data = cursor.value;
+                            let changed = false;
+                            if (data.isSubtask === undefined) { data.isSubtask = false; changed = true; }
+                            if (data.parentId === undefined) { data.parentId = null; changed = true; }
+                            if (changed) cursor.update(data);
+                            cursor.continue();
+                        }
+                    };
+                }
             }
             // habits: 习惯
             if (!db.objectStoreNames.contains('habits')) {
@@ -237,10 +334,35 @@
                 s.createIndex('date', 'date', { unique: false });
                 s.createIndex('hashtag', 'hashtag', { unique: false, multiEntry: true });
             }
+            // v2 -> v3: 为所有业务 store 的旧记录补充同步字段（updatedAt / updatedBy / deletedAt）
+            if (oldVersion < 3) {
+                const nowIso = new Date().toISOString();
+                for (const name of SYNC_STORES) {
+                    if (!preExistingStores.has(name)) continue; // 只迁移升级前已存在的 store
+                    const s = transaction ? transaction.objectStore(name) : db.transaction([name], 'readwrite').objectStore(name);
+                    if (s.openCursor) {
+                        const cursorReq = s.openCursor();
+                        cursorReq.onsuccess = (e) => {
+                            // 兼容真实 IDB（e.target.result）与无事件回调的测试模拟（cursorReq.result）
+                            const cursor = (e && e.target && e.target.result) || cursorReq.result;
+                            if (!cursor) return;
+                            const data = cursor.value;
+                            if (data === undefined || data === null) return; // 遍历结束
+                            let changed = false;
+                            if (data.updatedAt === undefined) { data.updatedAt = data.createdAt || nowIso; changed = true; }
+                            if (data.updatedBy === undefined) { data.updatedBy = null; changed = true; }
+                            if (data.deletedAt === undefined) { data.deletedAt = null; changed = true; }
+                            if (changed) cursor.update(data);
+                            cursor.continue();
+                        };
+                    }
+                }
+            }
         }
 
         // ---- 通用 CRUD ----
-        async put(storeName, data) {
+        // 底层写入（不打戳、不触发同步钩子）
+        async _write(storeName, data) {
             await this.init();
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readwrite');
@@ -251,7 +373,32 @@
             });
         }
 
-        async get(storeName, id) {
+        /**
+         * 写入记录。业务 store 自动打戳 updatedAt / updatedBy（deviceId），
+         * 并通知 Sync 模块（防抖自动 push）。
+         */
+        async put(storeName, data) {
+            if (SYNC_STORES.includes(storeName)) {
+                const deviceId = await this.getDeviceId();
+                data.updatedAt = Utils.now();
+                data.updatedBy = deviceId;
+                if (data.deletedAt === undefined) data.deletedAt = null;
+                this._notifyLocalWrite(storeName);
+            }
+            return this._write(storeName, data);
+        }
+
+        /**
+         * 原始写入：不打戳、不触发同步钩子。
+         * 仅供同步模块（pull 落库）使用，保留远端原始 updatedAt / updatedBy，
+         * 防止「pull 写入 → 再次打戳 → 再次 push」的死循环。
+         */
+        async putRaw(storeName, data) {
+            return this._write(storeName, data);
+        }
+
+        // 单条读取（含墓碑，供同步/内部使用）
+        async getIncludingDeleted(storeName, id) {
             await this.init();
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readonly');
@@ -262,7 +409,29 @@
             });
         }
 
+        // 单条读取：默认跳过墓碑（deletedAt 非空视为不存在）
+        async get(storeName, id) {
+            const result = await this.getIncludingDeleted(storeName, id);
+            if (result && result.deletedAt) return undefined;
+            return result;
+        }
+
+        /**
+         * 删除记录。业务 store 为软删除（置 deletedAt 墓碑 + 打戳），
+         * 以便多端同步传播删除；非同步 store（如 settings）为物理删除。
+         */
         async delete(storeName, id) {
+            if (!SYNC_STORES.includes(storeName)) {
+                return this.hardDelete(storeName, id);
+            }
+            const existing = await this.getIncludingDeleted(storeName, id);
+            if (!existing || existing.deletedAt) return;
+            existing.deletedAt = Utils.now();
+            return this.put(storeName, existing); // put 统一打戳
+        }
+
+        // 物理删除（特殊场景使用，如清理墓碑）
+        async hardDelete(storeName, id) {
             await this.init();
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readwrite');
@@ -273,7 +442,29 @@
             });
         }
 
-        async getAll(storeName) {
+        /**
+         * 清理墓碑：物理删除 deletedAt 超过指定天数的记录。
+         * 不传 storeName 则清理所有业务 store。返回清理条数。
+         */
+        async purgeDeleted(storeName = null, olderThanDays = 30) {
+            const stores = storeName ? [storeName] : SYNC_STORES.slice();
+            const cutoff = Date.now() - olderThanDays * 86400000;
+            let purged = 0;
+            for (const name of stores) {
+                const all = await this.getAllIncludingDeleted(name);
+                for (const record of all) {
+                    if (record.deletedAt && new Date(record.deletedAt).getTime() < cutoff) {
+                        const key = record.id !== undefined ? record.id : (record.date !== undefined ? record.date : record.key);
+                        await this.hardDelete(name, key);
+                        purged++;
+                    }
+                }
+            }
+            return purged;
+        }
+
+        // 全量读取（含墓碑，供同步使用）
+        async getAllIncludingDeleted(storeName) {
             await this.init();
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readonly');
@@ -284,7 +475,14 @@
             });
         }
 
-        async getByIndex(storeName, indexName, value) {
+        // 全量读取：默认过滤墓碑
+        async getAll(storeName) {
+            const results = await this.getAllIncludingDeleted(storeName);
+            return results.filter(r => !r.deletedAt);
+        }
+
+        // 索引读取（含墓碑，供同步使用）
+        async getByIndexIncludingDeleted(storeName, indexName, value) {
             await this.init();
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readonly');
@@ -294,6 +492,12 @@
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => reject(req.error);
             });
+        }
+
+        // 索引读取：默认过滤墓碑（保持「删除即不可见」的原有语义）
+        async getByIndex(storeName, indexName, value) {
+            const results = await this.getByIndexIncludingDeleted(storeName, indexName, value);
+            return results.filter(r => !r.deletedAt);
         }
 
         async getSetting(key, defaultValue = null) {
@@ -460,6 +664,10 @@
                 date: task.date || Utils.formatDate(),
                 generatedFromTaskId: task.generatedFromTaskId || null,
                 recurringInstanceDate: task.recurringInstanceDate || task.date || Utils.formatDate(),
+                parentId: task.parentId || null,
+                isSubtask: task.isSubtask || false,
+                order: task.order || 0,
+                note: task.note || '',
                 createdAt: Utils.now(),
                 updatedAt: Utils.now()
             };
@@ -477,6 +685,57 @@
             await db.put('tasks', data);
             return data;
         },
+        async _generateRecurringTaskInstance(task, dateStr) {
+            const newTask = {
+                ...task,
+                // 确定性 ID：同一源实例 + 同一日期 → 同一 ID。
+                // 多端场景下两台设备各自补副本/生成明日副本时会得到相同 ID，
+                // 云端 upsert 合并为一条，避免跨设备重复（LWW 收敛）。
+                id: `${task.id}_${dateStr}`,
+                date: dateStr,
+                completed: false,
+                completedAt: null,
+                generatedFromTaskId: task.id,
+                recurringInstanceDate: dateStr,
+                parentId: null,
+                isSubtask: false,
+                createdAt: Utils.now(),
+                updatedAt: Utils.now()
+            };
+            delete newTask.subtasks;
+            await db.put('tasks', newTask);
+            return newTask;
+        },
+        async _copyNonRecurringSubtasks(fromParentId, toParentId, dateStr) {
+            const subs = await this.getSubtasks(fromParentId);
+            const nonRecurringSubs = subs.filter(s => !s.isRecurring);
+            for (const sub of nonRecurringSubs) {
+                const newSub = {
+                    ...sub,
+                    id: Utils.generateId(),
+                    parentId: toParentId,
+                    isSubtask: true,
+                    date: dateStr,
+                    deadline: sub.deadline ? Utils.formatDate(new Date(Math.max(new Date(sub.deadline).getTime(), new Date(dateStr).getTime()))) : null,
+                    completed: false,
+                    completedAt: null,
+                    generatedFromTaskId: sub.id,
+                    recurringInstanceDate: dateStr,
+                    createdAt: Utils.now(),
+                    updatedAt: Utils.now()
+                };
+                await db.put('tasks', newSub);
+            }
+            return nonRecurringSubs.length;
+        },
+        async _removeSubtaskTimelineEvents(subtaskId, date) {
+            const events = await db.getByIndex('timeline', 'taskId', subtaskId);
+            const targetEvents = date ? events.filter(e => e.date === date) : events;
+            for (const evt of targetEvents) {
+                await db.delete('timeline', evt.id);
+            }
+            return targetEvents.length;
+        },
         async toggleComplete(id) {
             const task = await db.get('tasks', id);
             if (!task) return null;
@@ -487,29 +746,19 @@
             task.updatedAt = Utils.now();
             await db.put('tasks', task);
             // 如果是循环任务且完成，创建明天的副本
-            if (task.completed && task.isRecurring && task.recurringRule) {
+            if (task.completed && task.isRecurring && task.recurringRule && !task.isSubtask) {
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 const tomorrowStr = Utils.formatDate(tomorrow);
                 // 检查明天是否已有该任务
                 const existing = await db.getByIndex('tasks', 'date', tomorrowStr);
-                const sameTaskExists = existing.some(t => t.title === task.title && t.isRecurring);
+                const sameTaskExists = existing.some(t => t.title === task.title && t.isRecurring && !t.isSubtask);
                 if (!sameTaskExists) {
-                    const newTask = {
-                        ...task,
-                        id: Utils.generateId(),
-                        date: tomorrowStr,
-                        completed: false,
-                        completedAt: null,
-                        generatedFromTaskId: task.id,
-                        recurringInstanceDate: tomorrowStr,
-                        createdAt: Utils.now(),
-                        updatedAt: Utils.now()
-                    };
-                    delete newTask.completedAt;
-                    await db.put('tasks', newTask);
+                    const newTask = await this._generateRecurringTaskInstance(task, tomorrowStr);
+                    // 复制非循环子任务
+                    await this._copyNonRecurringSubtasks(id, newTask.id, tomorrowStr);
                 }
-            } else if (wasCompleted && !task.completed && task.isRecurring && task.recurringRule) {
+            } else if (wasCompleted && !task.completed && task.isRecurring && task.recurringRule && !task.isSubtask) {
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
                 const tomorrowStr = Utils.formatDate(tomorrow);
@@ -517,6 +766,7 @@
                 const generatedNext = existing.filter(t => (
                     t.isRecurring &&
                     !t.completed &&
+                    !t.isSubtask &&
                     t.title === task.title &&
                     t.deadline === task.deadline &&
                     (
@@ -525,20 +775,205 @@
                     )
                 ));
                 for (const nextTask of generatedNext) {
+                    // 级联删除明日副本下的子任务
+                    const childSubs = await this.getSubtasks(nextTask.id);
+                    for (const sub of childSubs) {
+                        await this._removeSubtaskTimelineEvents(sub.id);
+                        await db.delete('tasks', sub.id);
+                    }
                     await db.delete('tasks', nextTask.id);
                 }
             }
             return task;
         },
-        async delete(id) { return db.delete('tasks', id); },
+        async getSubtasks(parentId) {
+            if (!parentId) return [];
+            const subs = await db.getByIndex('tasks', 'parentId', parentId);
+            return subs.sort((a, b) => (a.order || 0) - (b.order || 0) || a.createdAt.localeCompare(b.createdAt));
+        },
+        async createSubtask(parentId, subtask) {
+            const parent = await db.get('tasks', parentId);
+            if (!parent) throw new Error('Parent task not found');
+            let quadrant = subtask.quadrant;
+            if (!quadrant) {
+                if (subtask.deadline && subtask.priority !== undefined) {
+                    quadrant = Utils.calculateQuadrant(subtask.deadline, subtask.priority);
+                } else if (subtask.deadline) {
+                    quadrant = Utils.calculateQuadrant(subtask.deadline, parent.priority);
+                } else {
+                    quadrant = parent.quadrant;
+                }
+            }
+            const data = await this.create({
+                title: subtask.title || '未命名子任务',
+                description: subtask.description || '',
+                note: subtask.note || '',
+                priority: subtask.priority !== undefined ? subtask.priority : parent.priority,
+                deadline: subtask.deadline || null,
+                quadrant: quadrant,
+                completed: false,
+                completedAt: null,
+                isRecurring: subtask.isRecurring || false,
+                recurringRule: subtask.recurringRule || null,
+                category: subtask.category || parent.category || '',
+                images: subtask.images || [],
+                date: subtask.date || parent.date || Utils.formatDate(),
+                parentId: parentId,
+                isSubtask: true,
+                order: subtask.order || 0,
+                createdAt: Utils.now(),
+                updatedAt: Utils.now()
+            });
+            return data;
+        },
+        async updateSubtask(id, updates) {
+            const existing = await db.get('tasks', id);
+            if (!existing) return null;
+            if (!existing.isSubtask) throw new Error('Task is not a subtask');
+            if (updates.parentId !== undefined && updates.parentId !== existing.parentId) {
+                throw new Error('Cannot change subtask parentId');
+            }
+            const data = { ...existing, ...updates, updatedAt: Utils.now() };
+            if (updates.quadrant === undefined && (updates.deadline !== undefined || updates.priority !== undefined)) {
+                data.quadrant = Utils.calculateQuadrant(data.deadline, data.priority);
+            }
+            await db.put('tasks', data);
+            return data;
+        },
+        async deleteSubtask(id) {
+            const sub = await db.get('tasks', id);
+            if (!sub) return null;
+            await this._removeSubtaskTimelineEvents(id);
+            await db.delete('tasks', id);
+            return sub;
+        },
+        async delete(id) {
+            const task = await db.get('tasks', id);
+            if (!task) return null;
+            if (!task.isSubtask) {
+                // 级联删除子任务及时间轴事件
+                const subs = await this.getSubtasks(id);
+                for (const sub of subs) {
+                    await this._removeSubtaskTimelineEvents(sub.id);
+                    await db.delete('tasks', sub.id);
+                }
+            }
+            await this._removeSubtaskTimelineEvents(id);
+            await db.delete('tasks', id);
+            return task;
+        },
+        async deleteWithSubtasks(id) {
+            // 显式调用，内部委托给 delete 以保证统一
+            return this.delete(id);
+        },
+        async getTaskTree(parentId) {
+            const parent = await db.get('tasks', parentId);
+            if (!parent) return null;
+            const subtasks = await this.getSubtasks(parentId);
+            return { parent, subtasks };
+        },
+        async checkAllSubtasksCompleted(parentId) {
+            const subs = await this.getSubtasks(parentId);
+            if (!subs.length) return false;
+            return subs.every(s => s.completed);
+        },
+        async toggleSubtaskComplete(id) {
+            const sub = await db.get('tasks', id);
+            if (!sub || !sub.isSubtask) return null;
+            const parent = await db.get('tasks', sub.parentId);
+            if (!parent) return null;
+            sub.completed = !sub.completed;
+            sub.completedAt = sub.completed ? Utils.now() : null;
+            sub.updatedAt = Utils.now();
+            await db.put('tasks', sub);
+            if (sub.completed) {
+                // 创建时间轴事件
+                const startTime = Utils.formatTime(new Date());
+                const [h, m] = startTime.split(':').map(Number);
+                const endDate = new Date();
+                endDate.setHours(h, m + 1);
+                const endTime = Utils.formatTime(endDate);
+                await TimelineStore.create({
+                    title: sub.title,
+                    description: sub.note || sub.description || '',
+                    type: 'actual',
+                    date: Utils.formatDate(),
+                    startTime,
+                    endTime,
+                    category: parent.category || '',
+                    taskId: sub.id
+                });
+                // 循环子任务：完成时生成明日副本
+                if (sub.isRecurring && sub.recurringRule) {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    const tomorrowStr = Utils.formatDate(tomorrow);
+                    // 查找所属父任务的明日副本
+                    const parentNext = await this._findRecurringNextInstance(parent.id, parent.title, tomorrowStr);
+                    const nextParentId = parentNext ? parentNext.id : parent.id;
+                    await this.createSubtask(nextParentId, {
+                        ...sub,
+                        id: Utils.generateId(),
+                        completed: false,
+                        completedAt: null,
+                        generatedFromTaskId: sub.id,
+                        recurringInstanceDate: tomorrowStr,
+                        date: tomorrowStr,
+                        parentId: nextParentId
+                    });
+                }
+                const allCompleted = await this.checkAllSubtasksCompleted(sub.parentId);
+                return { sub, allCompleted, parentTitle: parent.title };
+            } else {
+                // 撤回完成：删除今日时间轴事件
+                await this._removeSubtaskTimelineEvents(sub.id, Utils.formatDate());
+                return { sub, allCompleted: false, parentTitle: parent.title };
+            }
+        },
+        async _findRecurringNextInstance(originalId, title, dateStr) {
+            const candidates = await db.getByIndex('tasks', 'date', dateStr);
+            return candidates.find(t => t.title === title && t.isRecurring && !t.isSubtask && t.generatedFromTaskId === originalId) || null;
+        },
+        async completeParentIfConfirmed(parentId) {
+            return this.toggleComplete(parentId);
+        },
+        async createTasksFromPlan(plan) {
+            const created = [];
+            if (!Array.isArray(plan)) return created;
+            for (const item of plan) {
+                const parent = await this.create({
+                    title: item.title || '未命名任务',
+                    description: item.description || '',
+                    deadline: item.deadline || null,
+                    priority: item.priority || 5,
+                    category: item.category || '',
+                    date: item.date || Utils.formatDate()
+                });
+                created.push(parent);
+                if (Array.isArray(item.subtasks)) {
+                    for (const sub of item.subtasks) {
+                        await this.createSubtask(parent.id, {
+                            title: sub.title || '未命名子任务',
+                            description: sub.description || '',
+                            note: sub.note || '',
+                            deadline: sub.deadline || null,
+                            priority: sub.priority !== undefined ? sub.priority : parent.priority,
+                            category: sub.category || parent.category
+                        });
+                    }
+                }
+            }
+            return created;
+        },
         async getByQuadrant(quadrant) { return db.getByIndex('tasks', 'quadrant', quadrant); },
         async getByDate(date) { return db.getByIndex('tasks', 'date', date); },
         async getAll() { return db.getAll('tasks'); },
         async getTodayTasks() { return this.getByDate(Utils.formatDate()); },
         async getCompletionRate() {
             const today = await this.getTodayTasks();
-            if (!today.length) return 0;
-            return Math.round((today.filter(t => t.completed).length / today.length) * 100);
+            const parents = today.filter(t => !t.isSubtask);
+            if (!parents.length) return 0;
+            return Math.round((parents.filter(t => t.completed).length / parents.length) * 100);
         }
     };
 
@@ -911,7 +1346,10 @@
             timeoutMs: 30000,
             retries: 1,
             retryDelayMs: 800,
-            model: 'gpt-4o-mini'
+            model: 'gpt-4o-mini',
+            // 云端代理默认地址（CloudBase 云函数 ai-proxy，解决浏览器 CORS 直连限制）。
+            // 设置项 aiProxyUrl 可覆盖；置空字符串则强制直连。
+            proxyUrl: 'https://lifeos-d5gxoyi3o79a3518c-1456250880.ap-shanghai.app.tcloudbase.com/ai-proxy'
         },
 
         async getConfig(overrides = {}) {
@@ -919,15 +1357,18 @@
             const storedApiKey = await SettingsStore.get('apiKey', '');
             const storedModel = await SettingsStore.get('apiModel', this.defaults.model);
             const storedCustomModel = await SettingsStore.get('apiCustomModel', '');
+            const storedProxyUrl = await SettingsStore.get('aiProxyUrl', null);
             const model = overrides.model || storedModel || storedCustomModel || this.defaults.model;
 
             return {
                 baseUrl: overrides.baseUrl !== undefined ? overrides.baseUrl : storedBaseUrl,
                 apiKey: overrides.apiKey !== undefined ? overrides.apiKey : storedApiKey,
                 model: model === 'custom' ? (overrides.customModel || storedCustomModel || this.defaults.model) : model,
+                proxyUrl: overrides.proxyUrl !== undefined ? overrides.proxyUrl
+                    : (storedProxyUrl !== null ? storedProxyUrl : this.defaults.proxyUrl),
                 timeoutMs: overrides.timeoutMs || this.defaults.timeoutMs,
                 retries: overrides.retries !== undefined ? overrides.retries : this.defaults.retries,
-                retryDelayMs: overrides.retryDelayMs || this.defaults.retryDelayMs,
+                retryDelayMs: overrides.retryDelayMs !== undefined ? overrides.retryDelayMs : this.defaults.retryDelayMs,
                 ignoreOffline: !!overrides.ignoreOffline
             };
         },
@@ -938,7 +1379,8 @@
 
         _chatEndpoint(baseUrl) {
             const normalized = this._normalizeBaseUrl(baseUrl);
-            if (/\/chat\/completions$/i.test(normalized)) return normalized;
+            // 如果用户填写的是完整 endpoint（OpenAI 兼容或 Anthropic 兼容），直接复用
+            if (/\/(chat\/completions|v1\/messages)$/i.test(normalized)) return normalized;
             return normalized + '/chat/completions';
         },
 
@@ -1043,6 +1485,38 @@
             }
         },
 
+        _shouldUseProxy() {
+            if (typeof window === 'undefined' || !window.location) return false;
+            const hostname = window.location.hostname;
+            return window.location.protocol === 'http:' && (hostname === 'localhost' || hostname === '127.0.0.1');
+        },
+
+        _proxyUrl() {
+            return (window.location.origin || 'http://localhost:3000') + '/api/proxy/ai';
+        },
+
+        /**
+         * 探测本机 Express 后端是否真实存在（结果按会话缓存）。
+         * 为什么需要：_shouldUseProxy 只看 localhost 协议，但本地也可能是
+         * Python http.server 等纯静态服务器——它们没有 /api/proxy/ai，
+         * POST 会拿到 501「Unsupported method」HTML 错误页。
+         * 只有 Express 后端（server.js）实现了 /api/status，据此判定。
+         */
+        async _probeProxy() {
+            if (this._proxyAvailable !== undefined) return this._proxyAvailable;
+            try {
+                const statusUrl = (window.location.origin || '') + '/api/status';
+                const r = await fetch(statusUrl, { method: 'GET' });
+                this._proxyAvailable = r.ok;
+            } catch (e) {
+                this._proxyAvailable = false;
+            }
+            if (!this._proxyAvailable) {
+                console.warn('[LifeOS AIClient] 本地代理不可用（非 Express 后端），AI 请求将直连 Base URL');
+            }
+            return this._proxyAvailable;
+        },
+
         async chat(options = {}) {
             const config = await this.getConfig(options);
             const offlineMode = await SettingsStore.get('offlineMode', false);
@@ -1062,6 +1536,20 @@
             const endpoint = this._chatEndpoint(config.baseUrl);
             const payload = this._buildPayload(options, config);
             const startedAt = Date.now();
+            // 代理优先级：本机 Express（探测通过）> 云端代理（aiProxyUrl 配置/默认）> 直连
+            let proxyUrl = null;
+            if (this._shouldUseProxy() && await this._probeProxy()) {
+                proxyUrl = this._proxyUrl();
+            } else if (config.proxyUrl) {
+                proxyUrl = config.proxyUrl;
+            }
+            const fetchUrl = proxyUrl || endpoint;
+            const fetchBody = proxyUrl
+                ? JSON.stringify({ endpoint, apiKey: config.apiKey, payload })
+                : JSON.stringify(payload);
+            const fetchHeaders = { 'Content-Type': 'application/json' };
+            if (!proxyUrl) fetchHeaders['Authorization'] = `Bearer ${config.apiKey}`;
+
             let lastError = null;
 
             for (let attempt = 0; attempt <= config.retries; attempt++) {
@@ -1073,13 +1561,10 @@
                         timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
                     }
 
-                    const response = await fetch(endpoint, {
+                    const response = await fetch(fetchUrl, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${config.apiKey}`
-                        },
-                        body: JSON.stringify(payload),
+                        headers: fetchHeaders,
+                        body: fetchBody,
                         signal: controller ? controller.signal : undefined
                     });
                     if (timeoutId) clearTimeout(timeoutId);
@@ -1140,15 +1625,19 @@
         },
 
         async testConnection(overrides = {}) {
-            const response = await this.chat({
+            const chatOptions = {
                 ...overrides,
                 messages: [{ role: 'user', content: 'Hi' }],
                 maxTokens: overrides.maxTokens || 5,
-                temperature: 0,
                 retries: overrides.retries !== undefined ? overrides.retries : 0,
                 timeoutMs: overrides.timeoutMs || 15000,
                 ignoreOffline: true
-            });
+            };
+            // kimi-for-coding 不支持 temperature=0，只有传入明确值时才带
+            if (overrides.temperature !== undefined) {
+                chatOptions.temperature = overrides.temperature;
+            }
+            const response = await this.chat(chatOptions);
             return {
                 ok: true,
                 model: response.model || (await this.getConfig(overrides)).model,
@@ -1160,8 +1649,96 @@
 
 
     // ============================================================
-    // 3.5 Backend Sync - JSON file persistence via REST API
+    // 3.3 AI Planner - 任务拆解与自然语言规划
     // ============================================================
+    const AIPlanner = {
+        _buildPrompt(type, params) {
+            if (type === 'breakdown') {
+                return `你是一位任务规划助手。请根据以下任务标题和描述，将其拆分为合理的子任务列表。\n要求：\n- 返回 JSON 数组，每项包含 { title, deadline, note }，deadline 为 yyyy-MM-dd 格式，可为 null\n- 不要添加解释，只返回 JSON 数组\n- 子任务数量建议在 3-7 个\n任务标题：${params.title || ''}\n任务描述：${params.description || ''}`;
+            }
+            if (type === 'plan') {
+                const generateSubtasks = params.generateSubtasks ? '请为每个主任务生成具体的子任务。' : '不要生成子任务，只返回主任务列表。';
+                return `你是一位任务规划助手。用户用自然语言描述了一段时间内的多件事，请帮他拆分为多个主任务。
+要求：
+- 必须返回 JSON 数组，每项为 { title, description, deadline, subtasks: [{ title, deadline, note }] }
+- 不要返回对象包裹数组，不要返回 { tasks: [...] } 这种格式，直接返回数组
+- deadline 为 yyyy-MM-dd 格式
+- 每天至少生成一个主任务；同一天内不同类别的事（生活、论文、外出、采购、社交）要拆成不同主任务，不要合并
+- 每个明确提到的事件（洗衣、写论文、买东西、搬家、拍照、机场等）都要单独成一个主任务
+- 如果某件事包含多个步骤，请把它作为主任务，并把步骤作为它的子任务（例如“写论文”作为主任务，拆大纲/确定用图/润色/跑图为子任务）
+- 同一事项不要拆到不同任务里
+- 主任务数量按用户需求合理分配，重要事项单独成任务
+- ${generateSubtasks}
+- 只返回 JSON 数组，不要 markdown，不要解释
+
+示例输入：
+7.10 要洗衣服，步骤是打包、去洗衣店、确认烘干。7.11 要写论文，步骤是拆大纲、确定用图。
+
+示例输出：
+[
+  {
+    "title": "洗衣服",
+    "description": "",
+    "deadline": "2026-07-10",
+    "subtasks": [
+      {"title": "打包衣物", "deadline": "2026-07-10", "note": ""},
+      {"title": "送往洗衣店", "deadline": "2026-07-10", "note": ""},
+      {"title": "确认有烘干服务", "deadline": "2026-07-10", "note": ""}
+    ]
+  },
+  {
+    "title": "写论文",
+    "description": "",
+    "deadline": null,
+    "subtasks": [
+      {"title": "拆大纲", "deadline": null, "note": ""},
+      {"title": "确定用图", "deadline": null, "note": ""}
+    ]
+  }
+]
+
+用户输入：${params.input || ''}
+当前日期：${params.today || Utils.formatDate()}
+
+返回前自查：输入中明确提到的每件事（生活事务/工作/外出/社交）是否都有对应主任务？有遗漏先补上再返回。`;
+            }
+            return '';
+        },
+
+        async breakdownTask(title, description = '', options = {}) {
+            const prompt = this._buildPrompt('breakdown', { title, description });
+            const response = await AIClient.chat({ ...options, prompt, responseFormat: { type: 'json_object' } });
+            const text = AIClient.extractText(response);
+            const parsed = Utils.parseJSONSafe(text, []);
+            const result = Utils._extractArrayFromJSON(parsed) || parsed;
+            if (!Array.isArray(result)) throw new Error('AI 返回的子任务格式不正确');
+            return result.map(item => ({
+                title: item.title || '',
+                deadline: item.deadline || null,
+                note: item.note || ''
+            })).filter(item => item.title);
+        },
+
+        async createPlanFromNaturalLanguage(input, generateSubtasks = false, options = {}) {
+            const prompt = this._buildPrompt('plan', { input, today: Utils.formatDate(), generateSubtasks });
+            const response = await AIClient.chat({ ...options, prompt, responseFormat: { type: 'json_object' } });
+            const text = AIClient.extractText(response);
+            const parsed = Utils.parseJSONSafe(text, []);
+            const result = Utils._extractArrayFromJSON(parsed) || parsed;
+            if (!Array.isArray(result)) throw new Error('AI 返回的任务计划格式不正确');
+            return result.map(item => ({
+                title: item.title || '',
+                description: item.description || '',
+                deadline: item.deadline || null,
+                subtasks: Array.isArray(item.subtasks) ? item.subtasks.map(s => ({
+                    title: s.title || '',
+                    deadline: s.deadline || null,
+                    note: s.note || ''
+                })).filter(s => s.title) : []
+            })).filter(item => item.title);
+        }
+    };
+
     const BackendSync = {
         _apiBase: (function() {
             if (window.location && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
@@ -1270,6 +1847,7 @@
         Moment: MomentStore,
         Settings: SettingsStore,
         AIClient,
+        AIPlanner,
         ExportImport,
         BackendSync
     };

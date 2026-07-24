@@ -8,12 +8,12 @@
     <title>Life OS — 仪表盘</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
-    <script src="js/core.js"></script>
+    <script src="js/core.js?v=1.2"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/mobile-nav.js"></script>
     <script src="js/pwa.js"></script>
     <style>
         /* ===== Dashboard 专属样式 ===== */
-        .dashboard-header { display: flex; justify-content: space-between; align-items: center; padding: 0 0 16px; border-bottom: 1px solid var(--border-light); margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
-        .dashboard-header h2 { font-size: 1.5rem; font-weight: 700; margin: 0; }
         .date-display { font-size: 1rem; color: var(--text-secondary); font-family: var(--font-sans); }
 
         /* 统计卡片 */
@@ -48,6 +48,9 @@
         .quick-action-btn:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--color-water-light); }
         .quick-action-btn.primary { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
         .quick-action-btn.primary:hover { background: var(--color-slytherin-green); border-color: var(--color-slytherin-green); }
+        .quick-action-btn:disabled, .quick-action-btn.disabled { opacity: 0.55; cursor: not-allowed; filter: grayscale(0.4); }
+        .quick-action-btn:disabled:hover, .quick-action-btn.disabled:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--border-light); }
+        .quick-action-btn.primary:disabled:hover { background: var(--color-ravenclaw-blue); color: white; border-color: var(--color-ravenclaw-blue); }
 
         /* 两栏布局 */
         .dashboard-grid { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
@@ -136,9 +139,11 @@
     <div id="app">
         <sidebar active-page="dashboard"></sidebar>
         <main class="main-content">
-            <header class="dashboard-header">
-                <h2>今日概览</h2>
-                <div class="date-display">{{ todayDate }}</div>
+            <header class="page-header">
+                <div class="header-title-group">
+                    <h2>今日概览</h2>
+                    <span class="header-subtitle">{{ todayDate }}</span>
+                </div>
             </header>
 
             <div v-if="loading" class="loading-state">
@@ -270,7 +275,7 @@
     </div>
 
     <script>
-        const { createApp, ref, computed, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted, watch } = Vue;
 
         const Sidebar = {
             name: 'Sidebar',
@@ -312,6 +317,7 @@
             `
         };
 
+        LifeOS.Sync.init();
         createApp({
             components: { Sidebar },
             setup() {
@@ -350,7 +356,7 @@
 
                     // 1. 任务数据
                     const allTasks = await LifeOS.Task.getAll();
-                    const todayTasks = allTasks.filter(t => t.date === dateStr);
+                    const todayTasks = allTasks.filter(t => t.date === dateStr && !t.isSubtask);
                     const completed = todayTasks.filter(t => t.completed).length;
                     completionRate.value = todayTasks.length ? Math.round((completed / todayTasks.length) * 100) : 0;
                     pendingTasks.value = todayTasks.filter(t => !t.completed).length;
@@ -413,6 +419,7 @@
                     }
                     // 任务完成率
                     for (const t of allTasks) {
+                        if (t.isSubtask) continue;
                         if (t.date && t.date.startsWith(yearMonth)) {
                             data[t.date] = data[t.date] || {};
                             data[t.date].totalTasks = (data[t.date].totalTasks || 0) + 1;
@@ -460,7 +467,9 @@
                     return map[cat] || '#7DD3FC';
                 };
 
-                onMounted(loadData);
+                onMounted(async () => {
+                    await loadData();
+                });
 
                 return {
                     loading, todayDate, showImport, completionRate, maxStreak, pendingTasks, totalXP, moodIcon, moodText,

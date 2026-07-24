@@ -8,7 +8,9 @@
     <title>Life OS — 设置</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
-    <script src="js/core.js"></script>
+    <script src="js/core.js?v=1.2"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/mobile-nav.js"></script>
     <script src="js/pwa.js"></script>
     <style>
         /* ===== 设置页面专属样式 ===== */
@@ -90,6 +92,21 @@
         .about-section { text-align: center; padding: 16px 0; }
         .about-logo { font-size: 3rem; margin-bottom: 8px; }
         .about-name { font-size: 1.25rem; font-weight: 600; margin-bottom: 4px; }
+
+        /* ===== 多端同步 ===== */
+        .radio-group { display: flex; flex-direction: column; gap: 8px; }
+        .radio-option { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--text-primary); cursor: pointer; }
+        .conflict-empty { text-align: center; padding: 16px; color: var(--text-muted); font-size: 0.875rem; background: rgba(255,255,255,0.4); border-radius: var(--radius-md); }
+        .conflict-item { background: rgba(255,255,255,0.5); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 14px; margin-top: 10px; }
+        .conflict-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .conflict-type { padding: 2px 8px; border-radius: 8px; font-size: 0.7rem; font-weight: 600; background: var(--color-water-light); color: var(--color-water-deep); flex-shrink: 0; }
+        .conflict-summary { font-size: 0.875rem; font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .conflict-versions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .conflict-version { background: rgba(255,255,255,0.6); border-radius: var(--radius-sm); padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+        .conflict-version-title { font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .conflict-meta { font-size: 0.75rem; color: var(--text-muted); word-break: break-all; }
+        .badge-main { padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: var(--color-gold); color: #92690A; font-weight: 600; }
+        .btn-sm { padding: 6px 12px; font-size: 0.75rem; margin-top: 4px; align-self: flex-start; }
         .about-version { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 12px; }
         .about-desc { font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6; max-width: 400px; margin: 0 auto; }
         .about-links { display: flex; justify-content: center; gap: 16px; margin-top: 16px; }
@@ -106,6 +123,7 @@
             .form-row { grid-template-columns: 1fr; }
             .data-actions { flex-direction: column; }
             .data-actions .btn { width: 100%; justify-content: center; }
+            .conflict-versions { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -128,7 +146,7 @@
                         <div class="form-group">
                             <label class="form-label">Base URL</label>
                             <input class="form-input" v-model="apiForm.baseUrl" placeholder="https://api.openai.com/v1">
-                            <div class="form-hint">支持任意兼容 OpenAI 格式的 API，如 Kimi、SiliconFlow、本地 Ollama 等</div>
+                            <div class="form-hint">支持任意兼容 OpenAI 格式的 API。可填 Base URL（如 https://api.kimi.com/coding/v1）或完整 Endpoint（如 https://api.kimi.com/coding/v1/chat/completions）</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">API Key</label>
@@ -141,6 +159,7 @@
                                 <select class="form-select" v-model="apiForm.model">
                                     <option value="gpt-4o">GPT-4o</option>
                                     <option value="gpt-4o-mini">GPT-4o Mini</option>
+                                    <option value="kimi-for-coding">Kimi Code (kimi-for-coding)</option>
                                     <option value="kimi-latest">Kimi (Moonshot)</option>
                                     <option value="deepseek-chat">DeepSeek-V3</option>
                                     <option value="claude-3-sonnet">Claude 3 Sonnet</option>
@@ -151,6 +170,11 @@
                                 <label class="form-label">自定义模型名</label>
                                 <input class="form-input" v-model="apiForm.customModel" placeholder="例如：qwen2.5-72b">
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">云端代理地址（可选）</label>
+                            <input class="form-input" v-model="apiForm.proxyUrl" placeholder="留空则使用默认 CloudBase 代理；填 - 强制直连">
+                            <div class="form-hint">浏览器直连大部分 AI API 会被 CORS 拦截，请求会经 CloudBase 云函数转发（API Key 随请求携带，服务器不存储）。默认：CloudBase ai-proxy</div>
                         </div>
                         <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
                             <button class="btn btn-primary" @click="saveApiConfig">💾 保存配置</button>
@@ -177,6 +201,146 @@
                                 导出：将所有数据下载为 JSON 备份文件<br>
                                 导入：从 JSON 备份文件恢复数据（可选择合并或覆盖）<br>
                                 清除：删除所有数据，此操作不可撤销
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 多端同步 -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">☁️</span>
+                            <span class="settings-card-title">多端同步</span>
+                        </div>
+
+                        <!-- 设备信息 -->
+                        <div class="form-group">
+                            <label class="form-label">设备名称</label>
+                            <input class="form-input" v-model="syncForm.deviceName" placeholder="如：手机-小米 / 新加坡电脑" @change="saveDeviceInfo">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">设备 ID</label>
+                            <input class="form-input" :value="syncForm.deviceId" readonly style="opacity: 0.7; cursor: default;">
+                            <div class="form-hint">设备唯一标识，自动生成，不可修改</div>
+                        </div>
+                        <div class="toggle-row">
+                            <div class="toggle-label">
+                                <span class="toggle-title">本设备为主设备</span>
+                                <span class="toggle-desc">冲突且两端修改时间接近（&lt; 2 秒）时，主设备版本获胜（建议只设一台）</span>
+                            </div>
+                            <div :class="['toggle-switch', syncForm.isMainDevice ? 'on' : '']" @click="toggleMainDevice"></div>
+                        </div>
+
+                        <!-- 云端配置：同步后端选择 -->
+                        <div class="form-group" style="margin-top: 16px;">
+                            <label class="form-label">同步后端</label>
+                            <select class="form-select" v-model="syncForm.syncProvider">
+                                <option value="none">关闭</option>
+                                <option value="supabase">Supabase（国际）</option>
+                                <option value="cloudbase">腾讯云 CloudBase（国内）</option>
+                            </select>
+                            <div class="form-hint">切换后端后，本机数据会在首次同步时全量推送到新后端（各后端的同步进度独立记录，互不影响）</div>
+                        </div>
+
+                        <!-- Supabase 配置 -->
+                        <template v-if="syncForm.syncProvider === 'supabase'">
+                            <div class="form-group">
+                                <label class="form-label">Supabase URL</label>
+                                <input class="form-input" v-model="syncForm.supabaseUrl" placeholder="https://xxxx.supabase.co">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Supabase anon key</label>
+                                <input class="form-input" type="password" v-model="syncForm.supabaseAnonKey" placeholder="eyJhbGciOi...">
+                                <div class="form-hint">仅存储在本机 IndexedDB，不会进入代码仓库；建表脚本见 guide/supabase-setup.sql</div>
+                            </div>
+                        </template>
+
+                        <!-- CloudBase 配置 -->
+                        <template v-else-if="syncForm.syncProvider === 'cloudbase'">
+                            <div class="form-group">
+                                <label class="form-label">CloudBase 环境 ID（envId）</label>
+                                <input class="form-input" v-model="syncForm.cloudbaseEnvId" placeholder="如：lifeos-1a2b3c">
+                                <div class="form-hint">需在腾讯云开发控制台创建 9 个集合并开启「匿名登录」，配置步骤见 guide/cloudbase-setup.md</div>
+                            </div>
+                        </template>
+
+                        <!-- 冲突策略 -->
+                        <div class="form-group">
+                            <label class="form-label">冲突策略</label>
+                            <div class="radio-group">
+                                <label class="radio-option"><input type="radio" value="lww" v-model="syncForm.conflictPolicy"> 自动保留最新（LWW）</label>
+                                <label class="radio-option"><input type="radio" value="ask" v-model="syncForm.conflictPolicy"> 冲突时询问我</label>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-primary" @click="saveSyncConfig">💾 保存同步配置</button>
+                            <button class="btn btn-secondary" @click="testSyncConnection" :disabled="syncTesting">{{ syncTesting ? '测试中...' : '🔌 测试连接' }}</button>
+                            <button class="btn btn-success" @click="syncNow" :disabled="syncing">{{ syncing ? '同步中...' : '🔄 立即同步' }}</button>
+                        </div>
+                        <div :class="['test-result', syncTestResult.type, { show: syncTestResult.message }]">
+                            {{ syncTestResult.message }}
+                        </div>
+                        <div class="form-hint" style="margin-top: 8px;">
+                            上次同步：{{ lastSyncAtText }}
+                            <span v-if="lastSyncError" style="color: var(--color-urgent);">　最近错误：{{ lastSyncError.message }}（{{ formatSyncTime(lastSyncError.at) }}）</span>
+                        </div>
+
+                        <!-- 冲突队列 -->
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+                            <label class="form-label" style="font-size: 1rem; color: var(--text-primary);">待处理冲突</label>
+                            <div v-if="!syncConflicts.length" class="conflict-empty">无待处理冲突</div>
+                            <div v-for="c in syncConflicts" :key="c.id" class="conflict-item">
+                                <div class="conflict-head">
+                                    <span class="conflict-type">{{ storeLabel(c.store) }}</span>
+                                    <span class="conflict-summary">{{ conflictSummary(c) }}</span>
+                                </div>
+                                <div class="conflict-versions">
+                                    <div class="conflict-version">
+                                        <div class="conflict-version-title">
+                                            本机版本
+                                            <span v-if="syncForm.isMainDevice" class="badge-main">主设备</span>
+                                        </div>
+                                        <div class="conflict-meta">来源：{{ deviceLabel(c.localDeviceId) }}</div>
+                                        <div class="conflict-meta">修改时间：{{ formatSyncTime(c.localUpdatedAt) }}</div>
+                                        <button class="btn btn-primary btn-sm" @click="resolveConflict(c.id, true)">保留本机版本</button>
+                                    </div>
+                                    <div class="conflict-version">
+                                        <div class="conflict-version-title">云端版本</div>
+                                        <div class="conflict-meta">来源：{{ deviceLabel(c.remoteDeviceId) }}</div>
+                                        <div class="conflict-meta">修改时间：{{ formatSyncTime(c.remoteUpdatedAt) }}</div>
+                                        <button class="btn btn-secondary btn-sm" @click="resolveConflict(c.id, false)">保留云端版本</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 设备管理（F-110~F-112） -->
+                        <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-light);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <label class="form-label" style="font-size: 1rem; color: var(--text-primary);">设备管理</label>
+                                <button class="btn btn-secondary btn-sm" @click="loadDeviceList" :disabled="deviceListLoading">{{ deviceListLoading ? '加载中...' : '🔃 刷新' }}</button>
+                            </div>
+                            <div class="form-hint" style="margin-bottom: 8px;">
+                                在同一云端注册过的设备会显示在这里。{{ syncForm.isMainDevice ? '你是主设备，可以休眠/唤醒或删除其他设备。' : '仅主设备可以管理其他设备（休眠/唤醒/删除）。' }}
+                            </div>
+                            <div v-if="!deviceList.length" class="conflict-empty">{{ deviceListHint }}</div>
+                            <div v-for="d in deviceList" :key="d.deviceId" class="conflict-item">
+                                <div class="conflict-head">
+                                    <span class="conflict-type">
+                                        {{ d.name || (d.deviceId || '').slice(0, 8) || '未命名设备' }}
+                                        <span v-if="d.deviceId === syncForm.deviceId" class="badge-main">本机</span>
+                                        <span v-if="d.isMaster" class="badge-main">主设备</span>
+                                    </span>
+                                    <span class="conflict-summary">{{ deviceStatusLabel(d.status) }}</span>
+                                </div>
+                                <div class="conflict-meta">ID：{{ d.deviceId }}</div>
+                                <div class="conflict-meta">最近活跃：{{ formatSyncTime(d.lastSeenAt) }}<span v-if="d.appVersion">　版本：v{{ d.appVersion }}</span></div>
+                                <div v-if="syncForm.isMainDevice && d.deviceId !== syncForm.deviceId" style="display: flex; gap: 8px; margin-top: 6px;">
+                                    <button class="btn btn-secondary btn-sm" @click="changeDeviceStatus(d, d.status === 'sleeping' ? 'active' : 'sleeping')">
+                                        {{ d.status === 'sleeping' ? '⏰ 唤醒' : '💤 休眠' }}
+                                    </button>
+                                    <button class="btn btn-secondary btn-sm" style="color: var(--color-urgent);" @click="revokeDevice(d)">🗑 删除</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -328,10 +492,11 @@
             `
         };
 
+        LifeOS.Sync.init();
         createApp({
             components: { Sidebar },
             setup() {
-                const apiForm = ref({ baseUrl: '', apiKey: '', model: 'gpt-4o', customModel: '' });
+                const apiForm = ref({ baseUrl: '', apiKey: '', model: 'gpt-4o', customModel: '', proxyUrl: '' });
                 const testing = ref(false);
                 const testResult = ref({ type: '', message: '' });
                 const showImport = ref(false);
@@ -346,13 +511,190 @@
                     autoSave: true
                 });
 
+                // ===== 多端同步 =====
+                const SYNC_STORE_LABELS = { tasks: '任务', timeline: '时间轴', habits: '习惯', habitRecords: '习惯打卡', reviews: '复盘', skills: '技能', notes: '笔记', characters: '角色', moments: '时刻' };
+                const syncForm = ref({ deviceName: '', deviceId: '', isMainDevice: false, syncProvider: 'none', supabaseUrl: '', supabaseAnonKey: '', cloudbaseEnvId: '', conflictPolicy: 'lww' });
+                const syncTesting = ref(false);
+                const syncTestResult = ref({ type: '', message: '' });
+                const syncing = ref(false);
+                const lastSyncAt = ref('');
+                const lastSyncError = ref(null);
+                const syncConflicts = ref([]);
+                const knownDevices = ref({});
+
+                const formatSyncTime = (ts) => {
+                    if (!ts) return '—';
+                    const d = new Date(ts);
+                    if (isNaN(d.getTime())) return String(ts);
+                    return d.toLocaleString('zh-CN', { hour12: false });
+                };
+                const lastSyncAtText = computed(() => lastSyncAt.value ? formatSyncTime(lastSyncAt.value) : '从未同步');
+                const storeLabel = (store) => SYNC_STORE_LABELS[store] || store;
+                const deviceLabel = (deviceId) => {
+                    if (!deviceId) return '未知设备';
+                    if (deviceId === syncForm.value.deviceId) return syncForm.value.deviceName || '本设备';
+                    return knownDevices.value[deviceId] || String(deviceId).slice(0, 8);
+                };
+                const conflictSummary = (c) => {
+                    const d = (c.local && typeof c.local === 'object') ? c.local : (c.remote || {});
+                    return d.title || d.name || d.text || d.date || c.key || c.id;
+                };
+
+                const loadSyncSettings = async () => {
+                    const deviceId = await LifeOS.Database.getDeviceId();
+                    let provider = await LifeOS.Settings.get('syncProvider', null);
+                    if (provider === null) {
+                        // 旧版升级：已配置过 Supabase 但未选过 provider → 视为 supabase
+                        provider = (await LifeOS.Settings.get('supabaseUrl', '')) ? 'supabase' : 'none';
+                    }
+                    syncForm.value = {
+                        deviceName: await LifeOS.Settings.get('deviceName', ''),
+                        deviceId,
+                        isMainDevice: await LifeOS.Settings.get('isMainDevice', false),
+                        syncProvider: provider,
+                        supabaseUrl: await LifeOS.Settings.get('supabaseUrl', ''),
+                        supabaseAnonKey: await LifeOS.Settings.get('supabaseAnonKey', ''),
+                        cloudbaseEnvId: await LifeOS.Settings.get('cloudbaseEnvId', ''),
+                        conflictPolicy: await LifeOS.Settings.get('conflictPolicy', 'lww')
+                    };
+                    // lastSyncAt 按 provider 分键存储（supabase 兼容旧版 lastSyncAt）
+                    lastSyncAt.value = await LifeOS.Settings.get('lastSyncAt_' + provider, '')
+                        || (provider === 'supabase' ? await LifeOS.Settings.get('lastSyncAt', '') : '');
+                    lastSyncError.value = await LifeOS.Settings.get('lastSyncError', null);
+                    syncConflicts.value = await LifeOS.Settings.get('syncConflicts', []);
+                    knownDevices.value = await LifeOS.Settings.get('knownDevices', {});
+                };
+
+                const saveDeviceInfo = async () => {
+                    await LifeOS.Settings.set('deviceName', syncForm.value.deviceName);
+                    await LifeOS.Settings.set('isMainDevice', syncForm.value.isMainDevice);
+                    // 登记本设备名，供冲突界面做 deviceId → 设备名映射
+                    const map = { ...knownDevices.value, [syncForm.value.deviceId]: syncForm.value.deviceName };
+                    knownDevices.value = map;
+                    await LifeOS.Settings.set('knownDevices', map);
+                };
+
+                const toggleMainDevice = async () => {
+                    syncForm.value.isMainDevice = !syncForm.value.isMainDevice;
+                    await saveDeviceInfo();
+                };
+
+                const saveSyncConfig = async () => {
+                    await saveDeviceInfo();
+                    await LifeOS.Settings.set('syncProvider', syncForm.value.syncProvider);
+                    await LifeOS.Settings.set('supabaseUrl', (syncForm.value.supabaseUrl || '').trim());
+                    await LifeOS.Settings.set('supabaseAnonKey', (syncForm.value.supabaseAnonKey || '').trim());
+                    await LifeOS.Settings.set('cloudbaseEnvId', (syncForm.value.cloudbaseEnvId || '').trim());
+                    await LifeOS.Settings.set('conflictPolicy', syncForm.value.conflictPolicy);
+                    if (LifeOS.Sync) await LifeOS.Sync.reload();
+                    lastSyncAt.value = await LifeOS.Settings.get('lastSyncAt_' + syncForm.value.syncProvider, '')
+                        || (syncForm.value.syncProvider === 'supabase' ? await LifeOS.Settings.get('lastSyncAt', '') : '');
+                    alert('同步配置已保存！');
+                };
+
+                const testSyncConnection = async () => {
+                    if (syncForm.value.syncProvider === 'none') {
+                        syncTestResult.value = { type: 'error', message: '请先选择同步后端' };
+                        return;
+                    }
+                    syncTesting.value = true;
+                    syncTestResult.value = { type: 'loading', message: '正在测试连接...' };
+                    try {
+                        const result = await LifeOS.Sync.testConnection({
+                            provider: syncForm.value.syncProvider,
+                            supabaseUrl: syncForm.value.supabaseUrl,
+                            supabaseAnonKey: syncForm.value.supabaseAnonKey,
+                            cloudbaseEnvId: syncForm.value.cloudbaseEnvId
+                        });
+                        syncTestResult.value = { type: result.ok ? 'success' : 'error', message: (result.ok ? '✅ ' : '❌ ') + result.message };
+                    } catch (err) {
+                        syncTestResult.value = { type: 'error', message: '❌ 连接失败: ' + err.message };
+                    }
+                    syncTesting.value = false;
+                };
+
+                const syncNow = async () => {
+                    if (!LifeOS.Sync || !LifeOS.Sync.isEnabled()) {
+                        syncTestResult.value = { type: 'error', message: '请先选择同步后端、填写配置并保存' };
+                        return;
+                    }
+                    syncing.value = true;
+                    syncTestResult.value = { type: 'loading', message: '正在同步...' };
+                    try {
+                        const result = await LifeOS.Sync.sync();
+                        if (result.ok) {
+                            syncTestResult.value = { type: 'success', message: `✅ 同步完成：拉取 ${result.pulled} 条，推送 ${result.pushed} 条` + (result.conflicts ? `，${result.conflicts} 条冲突待处理` : '') };
+                            loadDeviceList(); // 心跳已注册本机，刷新设备列表
+                        } else {
+                            const reasonText = result.reason === 'device-blocked' ? '本设备已被主设备休眠或删除，同步已暂停' : (result.reason || '未知错误');
+                            syncTestResult.value = { type: 'error', message: '❌ 同步失败: ' + reasonText };
+                        }
+                    } finally {
+                        syncing.value = false;
+                        const provider = syncForm.value.syncProvider;
+                        lastSyncAt.value = await LifeOS.Settings.get('lastSyncAt_' + provider, '')
+                            || (provider === 'supabase' ? await LifeOS.Settings.get('lastSyncAt', '') : '');
+                        lastSyncError.value = await LifeOS.Settings.get('lastSyncError', null);
+                        syncConflicts.value = await LifeOS.Settings.get('syncConflicts', []);
+                    }
+                };
+
+                const resolveConflict = async (conflictId, keepLocal) => {
+                    await LifeOS.Sync.resolveConflict(conflictId, keepLocal);
+                    syncConflicts.value = await LifeOS.Settings.get('syncConflicts', []);
+                };
+
+                // ===== 设备管理（F-110~F-112） =====
+                const deviceList = ref([]);
+                const deviceListLoading = ref(false);
+                const deviceListHint = ref('尚未加载设备列表');
+                const DEVICE_STATUS_LABELS = { active: '✅ 活跃', sleeping: '💤 已休眠', revoked: '🚫 已删除' };
+                const deviceStatusLabel = (s) => DEVICE_STATUS_LABELS[s] || DEVICE_STATUS_LABELS.active;
+
+                const loadDeviceList = async () => {
+                    if (!LifeOS.Sync || !LifeOS.Sync.isEnabled()) {
+                        deviceList.value = [];
+                        deviceListHint.value = '同步未启用：保存同步配置并同步一次后，设备会自动注册到这里';
+                        return;
+                    }
+                    deviceListLoading.value = true;
+                    try {
+                        const res = await LifeOS.Sync.listDevices();
+                        deviceList.value = res.devices || [];
+                        deviceListHint.value = res.ok ? '暂无设备记录（成功同步一次后自动注册）' : ('加载失败：' + (res.reason || '未知原因'));
+                    } catch (err) {
+                        deviceList.value = [];
+                        deviceListHint.value = '加载失败：' + err.message;
+                    } finally {
+                        deviceListLoading.value = false;
+                    }
+                };
+
+                const changeDeviceStatus = async (d, status) => {
+                    try {
+                        await LifeOS.Sync.setDeviceStatus(d.deviceId, status);
+                        await loadDeviceList();
+                    } catch (err) {
+                        alert('操作失败：' + err.message);
+                    }
+                };
+
+                const revokeDevice = async (d) => {
+                    const label = d.name || d.deviceId;
+                    if (!confirm(`确定删除设备「${label}」吗？\n\n该设备下次同步时会停止同步并需要重新授权（应用层吊销，可随时由主设备改回「活跃」）。`)) return;
+                    await changeDeviceStatus(d, 'revoked');
+                };
+
                 // 加载配置
                 const loadSettings = async () => {
                     const baseUrl = await LifeOS.Settings.get('apiBaseUrl', '');
                     const apiKey = await LifeOS.Settings.get('apiKey', '');
                     const model = await LifeOS.Settings.get('apiModel', 'gpt-4o');
                     const customModel = await LifeOS.Settings.get('apiCustomModel', '');
-                    apiForm.value = { baseUrl, apiKey, model, customModel };
+                    const storedProxy = await LifeOS.Settings.get('aiProxyUrl', null);
+                    // 表单语义：'' = 使用默认云端代理；'-' = 强制直连；其余 = 自定义代理地址
+                    const proxyUrl = storedProxy === null ? '' : (storedProxy === '' ? '-' : storedProxy);
+                    apiForm.value = { baseUrl, apiKey, model, customModel, proxyUrl };
 
                     const encourage = await LifeOS.Settings.get('enableEncourage', true);
                     const offline = await LifeOS.Settings.get('offlineMode', false);
@@ -368,6 +710,8 @@
                     await LifeOS.Settings.set('apiKey', apiForm.value.apiKey);
                     await LifeOS.Settings.set('apiModel', apiForm.value.model === 'custom' ? apiForm.value.customModel : apiForm.value.model);
                     await LifeOS.Settings.set('apiCustomModel', apiForm.value.customModel);
+                    const p = (apiForm.value.proxyUrl || '').trim();
+                    await LifeOS.Settings.set('aiProxyUrl', p === '' ? null : (p === '-' ? '' : p));
                     alert('配置已保存！');
                 };
 
@@ -381,10 +725,12 @@
 
                     try {
                         const model = apiForm.value.model === 'custom' ? apiForm.value.customModel : apiForm.value.model;
+                        const p = (apiForm.value.proxyUrl || '').trim();
                         const result = await LifeOS.AIClient.testConnection({
                             baseUrl: apiForm.value.baseUrl,
                             apiKey: apiForm.value.apiKey,
-                            model: model || 'gpt-4o-mini'
+                            model: model || 'gpt-4o-mini',
+                            proxyUrl: p === '' ? undefined : (p === '-' ? '' : p)
                         });
                         testResult.value = { type: 'success', message: `✅ 连接成功！模型 ${result.model || model} 可用。` };
                     } catch (err) {
@@ -443,12 +789,32 @@
                     showReset.value = false;
                 };
 
-                onMounted(loadSettings);
+                onMounted(() => {
+                    loadSettings();
+                    loadSyncSettings();
+                    loadDeviceList();
+                    window.addEventListener('lifeos:synced', loadSyncSettings);
+                    window.addEventListener('lifeos:device-blocked', (e) => {
+                        const s = e.detail && e.detail.status;
+                        syncTestResult.value = {
+                            type: 'error',
+                            message: s === 'revoked'
+                                ? '🚫 本设备已被主设备删除，同步已停止。如需恢复请联系主设备取消删除后重新配置。'
+                                : '💤 本设备已被主设备休眠，同步已暂停。'
+                        };
+                        if (s === 'revoked') loadSyncSettings();
+                    });
+                });
 
                 return {
                     apiForm, testing, testResult, showImport, showReset, importFile, importStrategy, importFileInput,
                     apiHistory, settings,
-                    saveApiConfig, testConnection, toggleSetting, exportData, handleImportFile, confirmImport, confirmReset, clearHistory
+                    saveApiConfig, testConnection, toggleSetting, exportData, handleImportFile, confirmImport, confirmReset, clearHistory,
+                    syncForm, syncTesting, syncTestResult, syncing, lastSyncAt, lastSyncError, syncConflicts,
+                    lastSyncAtText, storeLabel, deviceLabel, conflictSummary, formatSyncTime,
+                    saveDeviceInfo, toggleMainDevice, saveSyncConfig, testSyncConnection, syncNow, resolveConflict,
+                    deviceList, deviceListLoading, deviceListHint, deviceStatusLabel,
+                    loadDeviceList, changeDeviceStatus, revokeDevice
                 };
             }
         }).mount('#app');

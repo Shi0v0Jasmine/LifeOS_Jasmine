@@ -1,0 +1,15 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "envId": "lifeos-d5gxoyi3o79a3518c",
+  "functionRoot": "cloud-functions",
+  "functions": [
+    {
+      "name": "ai-proxy",
+      "timeout": 30,
+      "runtime": "Nodejs18.15",
+      "handler": "index.main",
+      "memorySize": 128,
+      "description": "LifeOS AI 请求代理（解决浏览器 CORS 直连限制）"
+    }
+  ]
+}

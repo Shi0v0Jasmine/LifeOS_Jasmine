@@ -1,0 +1,98 @@
+/* ============================================================
+ * LifeOS 移动端导航（mobile-nav.js）
+ *
+ * 背景：屏幕宽度 ≤768px 时，CSS 会把侧边栏 translateX(-100%) 隐藏，
+ * 但各页面原本没有提供打开它的入口（汉堡按钮），导致手机上完全无法导航。
+ *
+ * 本脚本以纯 JS（无框架、IIFE）注入：
+ *   1. 左上角悬浮汉堡按钮（仅 ≤768px 时由 CSS 显示）
+ *   2. 半透明遮罩层
+ * 点击按钮切换侧边栏 .open；点击遮罩或任意导航项后自动关闭。
+ *
+ * 为什么不在 8 个页面的内联 Sidebar 组件里改？
+ * 侧边栏是每页内联定义的 Vue 组件，改 8 处模板难以维护；
+ * 本脚本在 DOM 层操作（点击时才查询 aside.sidebar），
+ * 与 Vue 渲染时序解耦，一处新增、全站生效。
+ * ============================================================ */
+(function () {
+    'use strict';
+
+    var BTN_ID = 'mobile-nav-btn';
+    var OVERLAY_ID = 'mobile-nav-overlay';
+
+    function getSidebar() {
+        return document.querySelector('aside.sidebar');
+    }
+
+    function isOpen(sidebar) {
+        return sidebar && sidebar.classList.contains('open');
+    }
+
+    function openNav() {
+        var sidebar = getSidebar();
+        var overlay = document.getElementById(OVERLAY_ID);
+        var btn = document.getElementById(BTN_ID);
+        if (!sidebar || !overlay) return;
+        sidebar.classList.add('open');
+        overlay.classList.add('visible');
+        if (btn) {
+            btn.classList.add('open');
+            btn.textContent = '✕';
+            btn.setAttribute('aria-label', '关闭导航菜单');
+        }
+        document.body.style.overflow = 'hidden'; // 防止背景滚动
+    }
+
+    function closeNav() {
+        var sidebar = getSidebar();
+        var overlay = document.getElementById(OVERLAY_ID);
+        var btn = document.getElementById(BTN_ID);
+        if (sidebar) sidebar.classList.remove('open');
+        if (overlay) overlay.classList.remove('visible');
+        if (btn) {
+            btn.classList.remove('open');
+            btn.textContent = '☰';
+            btn.setAttribute('aria-label', '打开导航菜单');
+        }
+        document.body.style.overflow = '';
+    }
+
+    function toggleNav() {
+        if (isOpen(getSidebar())) { closeNav(); } else { openNav(); }
+    }
+
+    function inject() {
+        if (document.getElementById(BTN_ID)) return; // 幂等
+
+        var btn = document.createElement('button');
+        btn.id = BTN_ID;
+        btn.type = 'button';
+        btn.setAttribute('aria-label', '打开导航菜单');
+        btn.textContent = '☰';
+        btn.addEventListener('click', toggleNav);
+
+        var overlay = document.createElement('div');
+        overlay.id = OVERLAY_ID;
+        overlay.addEventListener('click', closeNav);
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(btn);
+
+        // 点击任意导航链接后自动收起（跳转前收起，避免新页面残留状态）
+        document.addEventListener('click', function (e) {
+            var item = e.target.closest && e.target.closest('.sidebar .nav-item');
+            if (item) closeNav();
+        });
+
+        // 窗口拉宽回桌面尺寸时清理状态
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 768) closeNav();
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', inject);
+    } else {
+        inject();
+    }
+})();

@@ -152,6 +152,37 @@ app.get('/api/status', (req, res) => {
     });
 });
 
+// POST /api/proxy/ai - Proxy AI requests to avoid CORS
+app.post('/api/proxy/ai', async (req, res) => {
+    const { endpoint, apiKey, payload } = req.body || {};
+    if (!endpoint || !apiKey || !payload) {
+        return res.status(400).json({ error: 'Missing endpoint, apiKey or payload' });
+    }
+    if (!/^https?:\/\//i.test(endpoint)) {
+        return res.status(400).json({ error: 'Invalid endpoint URL' });
+    }
+    try {
+        const fetch = (await import('node-fetch')).default;
+        const upstreamRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(payload)
+        });
+        const text = await upstreamRes.text();
+        res.status(upstreamRes.status);
+        for (const [key, value] of upstreamRes.headers.entries()) {
+            if (/^content-(type|length)$/i.test(key)) res.setHeader(key, value);
+        }
+        res.send(text);
+    } catch (err) {
+        console.error('[LifeOS] AI proxy error:', err.message);
+        res.status(502).json({ error: 'AI proxy failed', message: err.message });
+    }
+});
+
 // GET /api/backups - List available backups
 app.get('/api/backups', (req, res) => {
     if (!fs.existsSync(BACKUP_DIR)) return res.json([]);

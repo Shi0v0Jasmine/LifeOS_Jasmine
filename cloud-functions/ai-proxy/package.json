@@ -1,0 +1,7 @@
+{
+  "name": "lifeos-ai-proxy",
+  "version": "1.0.0",
+  "description": "LifeOS AI request proxy (CORS relay for OpenAI-compatible endpoints)",
+  "main": "index.js",
+  "license": "MIT"
+}
