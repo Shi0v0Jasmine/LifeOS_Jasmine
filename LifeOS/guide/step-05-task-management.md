@@ -1,7 +1,7 @@
 # Step 5: 任务管理（Task Management）
 
 > Life OS 日常跟踪/记录 App —— 从零构建指南
-> 目标：构建四象限任务管理页面，支持完成率计算、角色激励触发、倒计时可视化
+> 目标：构建四象限任务管理页面，支持完成率计算、角色激励触发、倒计时可视化、子任务管理、AI 拆解与自然语言多日任务规划
 
 ---
 
@@ -22,6 +22,19 @@
 - **自动**：基于截止日期（紧急性）和优先级（重要性）计算
 - **手动**：用户可以在弹窗中直接调整象限，覆盖自动结果
 - 为什么允许手动？因为"重要/紧急"是主观判断，AI 无法完全替代用户的价值观。例如，"给妈妈打电话"对 AI 来说可能"不重要不紧急"，但对用户来说"重要"。
+
+### 1.1a 为什么子任务作为独立记录？
+
+子任务以独立记录存入 `tasks` store，携带 `parentId` 和 `isSubtask` 字段，而不是嵌套在亲任务的 `subtasks` 数组中。这样做的好处：
+- 子任务可以独立设置截止日期、优先级和完成状态
+- 子任务可以参与四象限显示（当 deadline ≤ 7 天时作为独立卡片）
+- 子任务完成时可以独立触发时间轴事件
+- 循环亲任务复制每日副本时，可以按规则复制非循环子任务
+- 首页完成率、日历统计只需过滤 `isSubtask` 即可避免重复计算
+
+### 1.1b 为什么子任务象限不强制继承亲任务？
+
+如果子任务截止日期很近（例如 2 天后），但亲任务截止日期很远（例如 30 天后），强制继承会把子任务放在"不紧急"象限，造成视觉与语义冲突。因此子任务的 `quadrant` 基于自身 `deadline` + `priority` 计算；若子任务未设置这两个字段，才回退继承亲任务。
 
 ### 1.2 为什么角色激励在任务管理中触发？
 
@@ -46,6 +59,24 @@
 ---
 
 ## 二、核心代码解析
+
+### 2.0 新增 API（v1.2 子任务扩展）
+
+```javascript
+// 子任务 CRUD
+LifeOS.Task.getSubtasks(parentId)
+LifeOS.Task.createSubtask(parentId, subtask)
+LifeOS.Task.updateSubtask(id, updates)
+LifeOS.Task.deleteSubtask(id)
+LifeOS.Task.toggleSubtaskComplete(id) // 返回 {sub, allCompleted, parentTitle}
+
+// AI 规划
+LifeOS.AIPlanner.breakdownTask(title, description)
+LifeOS.AIPlanner.createPlanFromNaturalLanguage(input, generateSubtasks)
+
+// 工具
+LifeOS.Utils.parseJSONSafe(str, fallback)
+```
 
 ### 2.1 四象限自动计算
 
@@ -176,10 +207,60 @@ const getEncourageLine = (char) => {
         </div>
         <span class="countdown-text">{{ getDeadlineText(task) }}</span>
     </div>
+    <!-- 子任务进度（仅亲任务） -->
+    <div v-if="!task.isSubtask && getSubtaskProgress(task)" class="subtask-progress">
+        <span>子任务 {{ getSubtaskProgress(task) }}</span>
+    </div>
 </div>
 ```
 
 **为什么 `.task-checkbox` 有 `@click.stop`？** 点击复选框时，如果不加 `.stop`，事件会冒泡到父元素 `.task-card`，触发 `openDetail(task)`——用户只想切换完成状态，却意外打开了详情弹窗。`.stop` 阻止事件冒泡，确保点击复选框只触发 `toggleComplete`。
+
+### 2.6 子任务完成联动
+
+```javascript
+const toggleSubtaskComplete = async (sub) => {
+    const result = await LifeOS.Task.toggleSubtaskComplete(sub.id);
+    if (!result) return;
+    subtasks.value = await LifeOS.Task.getSubtasks(editingTask.value.id);
+    await loadTasks();
+    if (result.allCompleted) {
+        pendingParentId.value = sub.parentId;
+        pendingParentTitle.value = result.parentTitle;
+        showSubtaskCompleteConfirm.value = true;
+    }
+};
+```
+
+**为什么联动提示不由核心层弹窗？** 核心层（core.js）应保持为纯数据层，避免直接操作 UI。核心层只返回 `allCompleted` 标志，由 Vue UI 层决定是否弹窗、如何弹窗，保持关注点分离。
+
+### 2.7 AI 任务拆解
+
+```javascript
+const runAIBreakdown = async () => {
+    const suggestions = await LifeOS.AIPlanner.breakdownTask(
+        taskForm.value.title,
+        taskForm.value.description
+    );
+    aiSuggestions.value = suggestions.map(s => ({ ...s, selected: false }));
+};
+```
+
+**为什么默认不自动保存 AI 建议？** AI 生成的子任务可能不符合用户预期。默认以可编辑列表展示，用户勾选后才写入数据库，避免"AI 污染"任务数据。
+
+### 2.8 自然语言创建多日任务
+
+```javascript
+const generateNLPlan = async () => {
+    const plan = await LifeOS.AIPlanner.createPlanFromNaturalLanguage(
+        nlInput.value,
+        nlGenerateSubtasks.value
+    );
+    nlPlan.value = plan;
+};
+```
+
+首页输入"三天读完 300 页论文"，AI 返回 `[{ title, deadline, subtasks }]` 数组，用户在预览区可编辑每个任务和子任务，确认后调用 `LifeOS.Task.createTasksFromPlan(plan)` 批量写入。
 
 ---
 
@@ -229,6 +310,18 @@ const getEncourageLine = (char) => {
 
 ## 四、验证步骤
 
+### 4.0 验证子任务管理（v1.2）
+
+1. 打开 `tasks.html`，创建亲任务"准备论文答辩"
+2. 点击亲任务卡片 → 弹窗中点击"添加子任务"
+3. 添加子任务"制作 PPT"（截止日期 3 天后）和"模拟答辩"（10 天后）
+4. 保存 → "制作 PPT" 应作为独立卡片出现在任务列表；"模拟答辩"仅在详情中可见
+5. 标记"制作 PPT"完成 → 时间轴页面应新增一条实际事件
+6. 标记所有子任务完成 → 应弹出"是否同步完成亲任务"确认框
+7. 在首页 Dashboard 点击"自然语言创建任务"，输入"三天读完 300 页论文"
+8. 生成计划 → 应出现 3 个亲任务预览；开启"为每个任务生成子任务"后，每个亲任务下包含子任务
+9. 点击"确认创建" → 任务列表中应出现新增任务
+
 ### 4.1 验证任务创建与四象限分类
 
 1. 打开 `tasks.html`（强制刷新 Ctrl + F5）
@@ -270,6 +363,11 @@ const getEncourageLine = (char) => {
 
 | 问题 | 原因 | 解决 |
 |------|------|------|
+| 子任务不显示在四象限 | 子任务 deadline > 7 天或没有 deadline | 子任务仅当 deadline ≤ 7 天且 quadrant 匹配时显示；其余只在亲任务详情显示 |
+| 子任务全部完成后未提示同步完成 | 核心层未返回 allCompleted 或 UI 未监听 | 检查 `LifeOS.Task.toggleSubtaskComplete` 返回值和弹窗绑定 |
+| AI 拆解返回格式错误 | AI 返回非 JSON 或 Markdown 代码块 | 检查 `LifeOS.Utils.parseJSONSafe` 解析逻辑，或确认 prompt 是否要求纯 JSON |
+| 自然语言创建无反应 | API 未配置或离线模式开启 | 检查设置中的 Base URL、API Key，以及 `offlineMode` 设置 |
+| 首页完成率包含子任务 | 过滤条件未加 `!t.isSubtask` | 检查 `index.html` 的 `todayTasks` 和 `loadCalendarData` 过滤逻辑 |
 | 任务创建后不在四象限中 | 象限未自动计算 | 检查 `calculateQuadrant` 是否被调用，确认 `deadline` 和 `priority` 有值 |
 | 完成率始终 0% | 没有今日任务 | 创建任务时确认 `date` 字段是今天（`LifeOS.Utils.formatDate()`） |
 | 角色激励不触发 | 角色库为空 | 先导入角色库（characters.html），或检查 `Character.getAll()` 返回值 |
@@ -297,6 +395,7 @@ const getEncourageLine = (char) => {
 
 > 本文件位置：`guide/step-05-task-management.md`
 > 对应新增/修改：
-> - 新增：`tasks.html`（完整任务管理页面：四象限、任务卡片、倒计时、角色激励弹窗）
-> - 修改：`css/style.css`（四象限网格、任务卡片、倒计时进度条、角色激励弹窗）
-> - 依赖：`js/core.js`（Task DAO、Character DAO、Utils.calculateQuadrant）
+> - 修改：`tasks.html`（四象限、任务卡片、倒计时、角色激励弹窗、子任务管理、AI 拆解、完成联动）
+> - 修改：`index.html`（自然语言创建多日任务面板、计划预览）
+> - 修改：`css/style.css`（四象限网格、任务卡片、倒计时进度条、角色激励弹窗、子任务/AI/自然语言面板样式）
+> - 修改：`js/core.js`（Task DAO 子任务扩展、AIPlanner、循环任务子任务复制、Utils.parseJSONSafe）

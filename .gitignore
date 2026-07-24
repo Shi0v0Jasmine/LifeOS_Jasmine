@@ -1,4 +1,4 @@
-﻿.workbuddy/
+.workbuddy/
 chat-history.md
 .DS_Store
 Thumbs.db
@@ -20,3 +20,7 @@ screenshots/
 # User data (backend persistence)
 LifeOS/data/lifeos-db.json
 LifeOS/data/backups/
+
+# Local runtime artifacts / screenshots / temp payloads
+references/
+lifeos-backup-*.json
