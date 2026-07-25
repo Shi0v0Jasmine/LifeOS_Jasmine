@@ -388,10 +388,16 @@
                                 <div class="conflict-meta">ID：{{ d.deviceId }}</div>
                                 <div class="conflict-meta">最近活跃：{{ formatSyncTime(d.lastSeenAt) }}<span v-if="d.appVersion">　版本：v{{ d.appVersion }}</span></div>
                                 <div v-if="syncForm.isMainDevice && d.deviceId !== syncForm.deviceId" style="display: flex; gap: 8px; margin-top: 6px;">
-                                    <button class="btn btn-secondary btn-sm" @click="changeDeviceStatus(d, d.status === 'sleeping' ? 'active' : 'sleeping')">
-                                        {{ d.status === 'sleeping' ? '⏰ 唤醒' : '💤 休眠' }}
-                                    </button>
-                                    <button class="btn btn-secondary btn-sm" style="color: var(--color-urgent);" @click="revokeDevice(d)">🗑 删除</button>
+                                    <template v-if="d.status === 'revoked'">
+                                        <button class="btn btn-secondary btn-sm" @click="changeDeviceStatus(d, 'active')">✅ 恢复</button>
+                                        <button class="btn btn-secondary btn-sm" style="color: var(--color-urgent);" @click="hardDeleteDevice(d)">🗑 彻底删除</button>
+                                    </template>
+                                    <template v-else>
+                                        <button class="btn btn-secondary btn-sm" @click="changeDeviceStatus(d, d.status === 'sleeping' ? 'active' : 'sleeping')">
+                                            {{ d.status === 'sleeping' ? '⏰ 唤醒' : '💤 休眠' }}
+                                        </button>
+                                        <button class="btn btn-secondary btn-sm" style="color: var(--color-urgent);" @click="revokeDevice(d)">🗑 删除</button>
+                                    </template>
                                 </div>
                             </div>
                         </div>
@@ -798,6 +804,17 @@
                     await changeDeviceStatus(d, 'revoked');
                 };
 
+                const hardDeleteDevice = async (d) => {
+                    const label = d.name || d.deviceId;
+                    if (!confirm(`确定彻底删除设备「${label}」吗？\n\n此操作会从云端永久移除该设备记录，不可恢复。该设备之前同步的业务数据不受影响。`)) return;
+                    try {
+                        await LifeOS.Sync.hardDeleteDevice(d.deviceId);
+                        await loadDeviceList();
+                    } catch (err) {
+                        alert('彻底删除失败：' + err.message);
+                    }
+                };
+
                 // 加载配置
                 const loadSettings = async () => {
                     const baseUrl = await LifeOS.Settings.get('apiBaseUrl', '');
@@ -929,7 +946,7 @@
                     lastSyncAtText, storeLabel, deviceLabel, conflictSummary, formatSyncTime,
                     saveDeviceInfo, toggleMainDevice, saveSyncConfig, testSyncConnection, syncNow, resolveConflict,
                     deviceList, deviceListLoading, deviceListHint, deviceStatusLabel,
-                    loadDeviceList, changeDeviceStatus, revokeDevice
+                    loadDeviceList, changeDeviceStatus, revokeDevice, hardDeleteDevice
                 };
             }
         }).mount('#app');

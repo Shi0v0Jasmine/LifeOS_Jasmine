@@ -222,6 +222,12 @@
             async deviceList() {
                 const rows = await _fetch('/rest/v1/devices?select=*&order=updated_at.desc');
                 return Array.isArray(rows) ? rows : [];
+            },
+
+            async deviceDelete(id) {
+                await _fetch('/rest/v1/devices?id=eq.' + encodeURIComponent(String(id)), {
+                    method: 'DELETE'
+                });
             }
         };
     }
@@ -448,6 +454,16 @@
                 } catch (err) {
                     throw normalizeCloudBaseError(err, 'CloudBase 设备列表查询失败');
                 }
+            },
+
+            async deviceDelete(id) {
+                try {
+                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const db = app.database();
+                    await withTimeout(db.collection('devices').doc(String(id)).remove(), 'CloudBase 设备删除');
+                } catch (err) {
+                    throw normalizeCloudBaseError(err, 'CloudBase 设备删除失败');
+                }
             }
         };
     }
@@ -669,6 +685,7 @@
                 const pullResult = await this.pull();
                 const pushResult = await this.push();
                 await this._heartbeat(); // F-109：同步成功后上报设备活跃（保留云端 status）
+                await this._cleanupRevokedDevices(); // F-112：主设备自动清理 30 天前 revoked 设备
                 const at = nowIso();
                 await window.LifeOS.Settings.set(this._lastSyncKey(provider), at);
                 await window.LifeOS.Settings.set('lastSyncError', null);
@@ -834,6 +851,55 @@
             const data = Object.assign({}, existing.data, { status });
             await adapter.deviceUpsert({ id: deviceId, data, updated_at: nowIso() });
             return { ok: true, deviceId, status };
+        },
+
+        /**
+         * F-112 主设备彻底删除他机记录（物理删除，不可恢复）。
+         * @param {string} deviceId 目标设备
+         */
+        async hardDeleteDevice(deviceId) {
+            const cfg = this._config || await this._loadConfig();
+            if (!cfg.isMainDevice) throw new Error('仅主设备可以管理其他设备');
+            if (deviceId === cfg.deviceId) throw new Error('不能删除本机');
+            const adapter = await this._ensureAdapter();
+            if (!adapter || !adapter.deviceDelete) throw new Error('同步后端不可用');
+            await adapter.deviceDelete(deviceId);
+            return { ok: true, deviceId };
+        },
+
+        /**
+         * F-112 自动清理：主设备每次 sync 成功后，硬删 revoked 超过 30 天的设备记录。
+         * 失败不阻塞同步，仅 console.warn。
+         */
+        async _cleanupRevokedDevices() {
+            const cfg = this._config || await this._loadConfig();
+            if (!cfg.isMainDevice) return { cleaned: 0 };
+            const adapter = await this._ensureAdapter();
+            if (!adapter || !adapter.deviceList || !adapter.deviceDelete) return { cleaned: 0 };
+            const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+            const cutoff = Date.now() - THIRTY_DAYS_MS;
+            try {
+                const rows = await adapter.deviceList();
+                let cleaned = 0;
+                for (const row of rows) {
+                    const data = row.data || {};
+                    if (data.status !== 'revoked') continue;
+                    const updatedMs = toMillis(row.updated_at || data.lastSeenAt || data.firstSeenAt);
+                    if (!updatedMs || updatedMs > cutoff) continue;
+                    if (String(row.id) === String(cfg.deviceId)) continue;
+                    try {
+                        await adapter.deviceDelete(row.id);
+                        cleaned++;
+                        console.log('[LifeOS Sync] 自动清理已删除设备:', row.id);
+                    } catch (err) {
+                        console.warn('[LifeOS Sync] 自动清理设备失败:', row.id, err.message);
+                    }
+                }
+                return { cleaned };
+            } catch (err) {
+                console.warn('[LifeOS Sync] 自动清理扫描失败:', err.message);
+                return { cleaned: 0 };
+            }
         },
 
         // ---- 冲突队列 ----

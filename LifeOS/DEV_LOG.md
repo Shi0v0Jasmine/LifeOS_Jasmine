@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.2.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.2.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-25】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -724,6 +724,20 @@ node --check LifeOS/js/sync.js → OK
 | SW 缓存 | `v20260725-2` → `v20260725-3` |
 | 部署/校验 | core.js / habits.html / sw.js 单文件部署，curl 校验线上含新代码 ✅ |
 | PRD | F-117~119 翻绿（Checklist/MoSCoW/§5.2）；新增 §4.1.16~4.1.18 与 US-030~032、F-120~F-122 规划（v5.3.0） |
+
+### 9.23 v5.2.1 设备管理 UI 补全与 revoked 设备自动清理（2026-07-25）
+
+**背景**：用户截图反馈被删除设备一直显示「已删除」且按钮区仍显示「休眠/删除」，逻辑上应为「恢复/彻底删除」。同时 PRD 需明确 revoked 记录的保留与清理策略。
+
+| 项目 | 内容 |
+|------|------|
+| 问题确认 | revoked 只是 `devices` 集合状态标记，不删业务数据；当前无自动清理，记录会一直保留；恢复后需重新配置同步后端（`syncProvider` 已被重置），`lastSyncAt` 保留走增量同步 |
+| PRD 更新 | §4.1.13 F-112 扩展：revoked 保留 30 天供恢复，超期后由主设备每次 `sync()` 自动物理删除；主设备也可手动「彻底删除」立即硬删；补充恢复路径说明 |
+| UI 补全（settings.html） | 设备管理按钮按状态渲染：active → 💤 休眠 + 🗑 删除；sleeping → ⏰ 唤醒 + 🗑 删除；revoked → ✅ 恢复 + 🗑 彻底删除；「彻底删除」有独立确认弹窗（注明业务数据不受影响） |
+| `sync.js` | CloudBase/Supabase adapter 新增 `deviceDelete(id)`；`Sync.hardDeleteDevice(deviceId)` 主设备守卫（非主设备/本机拒绝）；`Sync._cleanupRevokedDevices()` 主设备每次 `sync()` 成功后扫描 `devices`，硬删 `status === 'revoked'` 且 `updatedAt` 超 30 天的记录；清理失败不阻塞同步仅 console.warn |
+| 测试 | `tests/sync-merge.test.js` 新增 2 用例：`testHardDeleteDeviceMasterGuard`（非主设备/本机/正常删除三守卫）、`testCleanupRevokedDevices`（31 天前 revoked 被删、20 天前 revoked 保留、active 保留、本机跳过）；sync-merge **31**/31 PASS，core-data 10、subtask 9、ai-planner-parse 5/6、habit-plan 6 全绿 |
+| SW 缓存 | `v20260725-3` → `v20260725-4` |
+| 部署/校验 | sync.js / settings.html / sw.js 单文件部署，curl 校验线上含 `hardDeleteDevice`、`_cleanupRevokedDevices`、「彻底删除」「恢复」✅ |
 
 ### 9.7 与既有功能的关系
 

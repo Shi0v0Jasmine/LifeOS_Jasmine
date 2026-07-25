@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.2.0`
-Latest released version: `5.2.0`（2026-07-25 发布，习惯周期计划与暂停：周期型/限时型计划 + 原因必填暂停）
+Current source version: `5.2.1`
+Latest released version: `5.2.1`（2026-07-25 发布，设备管理 UI 补全与 revoked 设备 30 天自动清理）
 
 版本号格式：
 
@@ -86,6 +86,7 @@ LifeOS 示例：
 | v5.0.3 | — | 2026-07-24 | v3 | bug修复：iOS Safari 小字号 date 输入框不渲染占位文字（子任务日期框变白板），改 text/date 聚焦切换模式 |
 | **v5.1.0** | — | **2026-07-25** | **v3** | 小版本：CloudBase 账号密码登录（F-113）+ 主设备权限跟随账号（F-114）；`settings.html` 新增「账号」卡片；`sync.js` 登录态变化后 `reload()` 使 `accountUid`/`isMainDevice` 生效；心跳设备记录写入 `accountUid`；匿名登录保留为降级路径；F-115 安全规则收紧待后续手动迁移 |
 | **v5.2.0** | — | **2026-07-25** | v3 | 小版本：习惯周期计划与暂停（F-117 周期型每周/每月 N 次可选停止日 / F-118 限时型 ≤30 天窗口 / F-119 暂停原因必填+时段选填+暂停期不计完成率）；`core.js` 新增纯函数模块 `HabitPlan`，habit 加 `plan`/`pauses` 字段，`checkIn` 扩展字段透传（为 F-120 度量预留）；`habits.html` 计划表单 + 进度 chip + 暂停徽标/置灰；新增 habit-plan 测试 6 项；PRD 同步新增 F-120~F-122 规划（v5.3） |
+| v5.2.1 | — | 2026-07-25 | v3 | bug修复/补全：设备管理 UI 按状态显示按钮（active→休眠+删除，sleeping→唤醒+删除，revoked→恢复+彻底删除）；`sync.js` 新增 `hardDeleteDevice()` 与 `_cleanupRevokedDevices()`，主设备每次 sync 自动硬删 30 天前 revoked 设备；PRD F-112 扩展自动清理策略 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

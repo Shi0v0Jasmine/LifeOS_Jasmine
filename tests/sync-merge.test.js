@@ -550,8 +550,8 @@ async function testLastSyncAtLegacyFallback() {
 
 // ============ 设备管理（F-109~F-112）测试 ============
 
-function makeDeviceMockAdapter(deviceDoc) {
-    const calls = { deviceGet: 0, deviceUpsert: [], upsert: [], fetchSince: 0 };
+function makeDeviceMockAdapter(deviceDoc, options = {}) {
+    const calls = { deviceGet: 0, deviceUpsert: [], deviceDelete: [], upsert: [], fetchSince: 0 };
     const adapter = {
         name: 'mock',
         testConnection: async () => ({ ok: true, message: 'ok' }),
@@ -564,7 +564,8 @@ function makeDeviceMockAdapter(deviceDoc) {
                 : null;
         },
         deviceUpsert: async (row) => { calls.deviceUpsert.push(JSON.parse(JSON.stringify(row))); },
-        deviceList: async () => []
+        deviceList: async () => options.deviceList || [],
+        deviceDelete: async (id) => { calls.deviceDelete.push(id); }
     };
     return { calls, adapter };
 }
@@ -772,6 +773,53 @@ async function testHeartbeatIncludesAccountUid() {
     assert.strictEqual(calls.deviceUpsert[0].data.accountUid, 'uid-jasmine', '心跳设备记录应包含 accountUid');
 }
 
+async function testHardDeleteDeviceMasterGuard() {
+    const { LifeOS } = loadLifeOSWithContext();
+    const { calls, adapter } = makeDeviceMockAdapter({ status: 'revoked' });
+    await setupSyncWithMock(LifeOS, adapter, { isMainDevice: false });
+
+    await assert.rejects(
+        () => LifeOS.Sync.hardDeleteDevice('dev-other'),
+        /仅主设备/,
+        '非主设备不得彻底删除他机'
+    );
+
+    await LifeOS.Settings.set('isMainDevice', true);
+    await LifeOS.Sync._loadConfig();
+
+    await assert.rejects(
+        () => LifeOS.Sync.hardDeleteDevice('dev-self'),
+        /不能删除本机/,
+        '主设备不得彻底删除本机'
+    );
+
+    const res = await LifeOS.Sync.hardDeleteDevice('dev-other');
+    assert.strictEqual(res.ok, true, '主设备应能彻底删除他机');
+    assert.strictEqual(calls.deviceDelete.length, 1, '应调用一次 deviceDelete');
+    assert.strictEqual(calls.deviceDelete[0], 'dev-other', '删除目标应正确');
+}
+
+async function testCleanupRevokedDevices() {
+    const { LifeOS } = loadLifeOSWithContext();
+    const now = Date.now();
+    const thirtyOneDaysAgo = new Date(now - 31 * 24 * 60 * 60 * 1000).toISOString();
+    const twentyDaysAgo = new Date(now - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const deviceList = [
+        { id: 'dev-old-revoked', data: { status: 'revoked', lastSeenAt: thirtyOneDaysAgo }, updated_at: thirtyOneDaysAgo },
+        { id: 'dev-new-revoked', data: { status: 'revoked', lastSeenAt: twentyDaysAgo }, updated_at: twentyDaysAgo },
+        { id: 'dev-active', data: { status: 'active', lastSeenAt: twentyDaysAgo }, updated_at: twentyDaysAgo },
+        { id: 'dev-self', data: { status: 'revoked', lastSeenAt: thirtyOneDaysAgo }, updated_at: thirtyOneDaysAgo }
+    ];
+    const { calls, adapter } = makeDeviceMockAdapter(null, { deviceList });
+    await setupSyncWithMock(LifeOS, adapter, { isMainDevice: true });
+
+    const result = await LifeOS.Sync._cleanupRevokedDevices();
+
+    assert.strictEqual(result.cleaned, 1, '应清理 1 台超期 revoked 设备');
+    assert.strictEqual(calls.deviceDelete.length, 1, '应调用一次 deviceDelete');
+    assert.strictEqual(calls.deviceDelete[0], 'dev-old-revoked', '应删除 31 天前的 revoked 设备');
+}
+
 const tests = [
     testRemoteNewerWithoutLocalChangesUsesRemote,
     testLocalNewerKeepsLocal,
@@ -801,7 +849,9 @@ const tests = [
     testCloudBaseAdapterLoginLogout,
     testAccountLoginMakesMasterDevice,
     testAccountLogoutClearsUid,
-    testHeartbeatIncludesAccountUid
+    testHeartbeatIncludesAccountUid,
+    testHardDeleteDeviceMasterGuard,
+    testCleanupRevokedDevices
 ];
 
 (async () => {
