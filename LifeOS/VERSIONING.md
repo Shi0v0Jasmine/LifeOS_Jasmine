@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.2.1`
-Latest released version: `5.2.1`（2026-07-25 发布，设备管理 UI 补全与 revoked 设备 30 天自动清理）
+Current source version: `5.3.0`
+Latest released version: `5.3.0`（2026-07-25 发布，习惯打卡成果度量 + 截图 AI 解析 + 数据面板）
 
 版本号格式：
 
@@ -87,6 +87,7 @@ LifeOS 示例：
 | **v5.1.0** | — | **2026-07-25** | **v3** | 小版本：CloudBase 账号密码登录（F-113）+ 主设备权限跟随账号（F-114）；`settings.html` 新增「账号」卡片；`sync.js` 登录态变化后 `reload()` 使 `accountUid`/`isMainDevice` 生效；心跳设备记录写入 `accountUid`；匿名登录保留为降级路径；F-115 安全规则收紧待后续手动迁移 |
 | **v5.2.0** | — | **2026-07-25** | v3 | 小版本：习惯周期计划与暂停（F-117 周期型每周/每月 N 次可选停止日 / F-118 限时型 ≤30 天窗口 / F-119 暂停原因必填+时段选填+暂停期不计完成率）；`core.js` 新增纯函数模块 `HabitPlan`，habit 加 `plan`/`pauses` 字段，`checkIn` 扩展字段透传（为 F-120 度量预留）；`habits.html` 计划表单 + 进度 chip + 暂停徽标/置灰；新增 habit-plan 测试 6 项；PRD 同步新增 F-120~F-122 规划（v5.3） |
 | v5.2.1 | — | 2026-07-25 | v3 | bug修复/补全：设备管理 UI 按状态显示按钮（active→休眠+删除，sleeping→唤醒+删除，revoked→恢复+彻底删除）；`sync.js` 新增 `hardDeleteDevice()` 与 `_cleanupRevokedDevices()`，主设备每次 sync 自动硬删 30 天前 revoked 设备；PRD F-112 扩展自动清理策略 |
+| **v5.3.0** | — | **2026-07-25** | v3 | 小版本：习惯度量与数据面板（F-120 打卡成果度量自定义字段 / F-121 打卡截图 AI 解析回填、图片只解析不存储 / F-122 周月季年数据面板可点击回跳当日）；`HabitPlan` 增加度量归一、`aggregateRecords` 聚合、AI prompt 与解析；`habits.html` 成果字段编辑器 + 打卡弹窗 + 📊 数据面板 + `?date=` 定位；新增 habit-metrics 测试 5 项 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
@@ -101,7 +102,7 @@ LifeOS 示例：
 ## 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ 更新本文件（Current source version + 版本历史 + DB 登记）
@@ -121,5 +122,5 @@ LifeOS 示例：
 | v4.0.5 | 冷启动 15s 超时放宽、pull 回声 push 优化 | bug修复 |
 | v4.2.0 | 移动端响应式 M1–M3（底部 Tab Bar、象限 Tab、bottom sheet） | 小版本 |
 | ~~v5.2.0~~ | ~~习惯周期计划与暂停（F-117~F-119）~~ | ✅ 已发布 |
-| v5.3.0 | 习惯度量与数据面板（F-120 打卡成果度量 / F-121 打卡图片 AI 解析 / F-122 习惯数据面板） | 小版本 |
+| ~~v5.3.0~~ | ~~习惯度量与数据面板（F-120 打卡成果度量 / F-121 打卡图片 AI 解析 / F-122 习惯数据面板）~~ | ✅ 已发布 |
 | v6.0.0 | 新主流程（待规划：如原生壳打包、协作/分享功能） | 大版本 |

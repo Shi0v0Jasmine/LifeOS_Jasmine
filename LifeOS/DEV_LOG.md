@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.2.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.3.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-25】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -738,6 +738,21 @@ node --check LifeOS/js/sync.js → OK
 | 测试 | `tests/sync-merge.test.js` 新增 2 用例：`testHardDeleteDeviceMasterGuard`（非主设备/本机/正常删除三守卫）、`testCleanupRevokedDevices`（31 天前 revoked 被删、20 天前 revoked 保留、active 保留、本机跳过）；sync-merge **31**/31 PASS，core-data 10、subtask 9、ai-planner-parse 5/6、habit-plan 6 全绿 |
 | SW 缓存 | `v20260725-3` → `v20260725-4` |
 | 部署/校验 | sync.js / settings.html / sw.js 单文件部署，curl 校验线上含 `hardDeleteDevice`、`_cleanupRevokedDevices`、「彻底删除」「恢复」✅ |
+
+### 9.24 v5.3.0 习惯打卡成果度量 + 截图 AI 解析 + 数据面板（F-120~F-122，2026-07-25）
+
+**背景**：PRD §4.1.16~4.1.18（US-030~032，v5.2.0 时已预留 `checkIn` 透传与 `HabitPlan` 取数接口）。用户明确澄清：**截图只用于解析，图片本身不存储**。
+
+| 项目 | 内容 |
+|------|------|
+| F-120 成果度量 | `habit.metrics = [{key(=字段名), label, type:'number'/'duration'/'text', unit?}]`；时长统一存秒（`parseDuration` 支持 H:MM:SS / M:SS / 纯数字秒 / 中文单位，展示 `formatDuration`）；打卡值存 `habitRecords[].metrics`，全选填；习惯表单加字段编辑器（label/类型/单位，增删行） |
+| F-121 截图 AI 解析 | 打卡弹窗「📷 上传截图 AI 自动填写」→ `compressImage` 压缩 → `AIClient.chat` 多模态 messages（`ai-proxy` 纯转发，云函数零改动）→ `buildMetricsParsePrompt` 按字段定义生成 prompt → `parseJSONSafe` 容错 + `parseMetricsFromAI` 类型归一回填，用户确认后才保存；图片不落库（images 保持空）；失败降级手填不阻塞打卡 |
+| F-122 数据面板 | 卡片 📊 打开面板：周/月/季/年 Tab（周/月=日桶，季/年=月桶，`aggregateRecords` 聚合次数与度量求和）；CSS 柱状图（打卡次数）+ SVG 折线圆点（各数字/时长字段），bar/point 点击 → `habits.html?date=YYYY-MM-DD` 回跳当日（页面 onMounted 解析 ?date=） |
+| 交互兼容 | 无 metrics 的习惯保持一键打卡；有 metrics 的习惯点打卡钮走弹窗（可取消打卡/修改补打） |
+| 测试 | 新增 `tests/habit-metrics.test.js`（5 项：时长解析/度量归一/周月季年聚合/prompt 与 AI 解析/数据层集成）；core-data 10、subtask 9、sync-merge 31、ai-planner-parse 5/6、habit-plan 6 全绿 |
+| SW 缓存 | `v20260725-4` → `v20260725-5` |
+| 部署/校验 | core.js / habits.html / sw.js 单文件部署，curl 校验线上含新代码 ✅ |
+| PRD | F-120~122 翻绿（Checklist/MoSCoW/§5.2）；§4.1.16~4.1.18 改「已实现 v5.3.0」 |
 
 ### 9.7 与既有功能的关系
 

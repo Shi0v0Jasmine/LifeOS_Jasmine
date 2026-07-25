@@ -131,6 +131,46 @@
         .form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
         .form-error { font-size: 0.75rem; color: var(--color-urgent); margin-top: 4px; }
 
+        /* 度量字段编辑器（F-120） */
+        .metric-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+        .metric-row .form-input { flex: 1; padding: 8px 10px; }
+        .metric-row select.form-input { flex: 0 0 88px; }
+        .metric-row .unit-input { flex: 0 0 64px; }
+        .metric-del { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.75rem; flex-shrink: 0; }
+        .metric-add { background: none; border: 1px dashed var(--border-light); border-radius: var(--radius-md); padding: 6px 12px; cursor: pointer; font-size: 0.8rem; color: var(--text-secondary); width: 100%; }
+        .metric-add:hover { border-color: var(--color-water-deep); color: var(--color-water-deep); }
+
+        /* 打卡弹窗（F-120/F-121） */
+        .checkin-metric-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .checkin-metric-row .metric-label { flex: 0 0 96px; font-size: 0.875rem; color: var(--text-secondary); }
+        .checkin-metric-row .form-input { flex: 1; }
+        .checkin-metric-row .metric-unit { font-size: 0.75rem; color: var(--text-muted); }
+        .ai-parse-btn { width: 100%; padding: 10px; border-radius: var(--radius-md); border: 1px dashed var(--color-water-deep); background: rgba(125, 211, 252, 0.08); color: var(--color-water-deep); cursor: pointer; font-size: 0.875rem; transition: background 0.2s; }
+        .ai-parse-btn:hover:not(:disabled) { background: rgba(125, 211, 252, 0.2); }
+        .ai-parse-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ai-parse-status { font-size: 0.75rem; margin-top: 6px; color: var(--text-muted); }
+        .ai-parse-status.error { color: var(--color-urgent); }
+
+        /* 数据面板（F-122） */
+        .panel-modal { max-width: 640px; width: 95%; }
+        .panel-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .panel-tab { padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+        .panel-tab.active { background: var(--color-water-deep); color: white; border-color: var(--color-water-deep); }
+        .bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding: 8px 4px 0; border-bottom: 1px solid var(--border-light); }
+        .bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: pointer; min-width: 0; }
+        .bar-item .bar { width: 70%; max-width: 28px; border-radius: 4px 4px 0 0; background: var(--color-water-light); transition: background 0.2s; min-height: 2px; }
+        .bar-item:hover .bar { background: var(--color-water-deep); }
+        .bar-item .bar.has-data { background: var(--color-mint); }
+        .bar-item:hover .bar.has-data { background: var(--color-mint-deep); }
+        .bar-labels { display: flex; gap: 3px; padding: 4px 4px 0; }
+        .bar-labels span { flex: 1; text-align: center; font-size: 0.65rem; color: var(--text-muted); overflow: hidden; white-space: nowrap; }
+        .panel-section-title { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin: 14px 0 6px; }
+        .metric-chart { width: 100%; }
+        .metric-chart .point { cursor: pointer; fill: var(--color-water-deep); }
+        .metric-chart .point:hover { fill: var(--color-urgent); r: 6; }
+        .metric-chart .line { fill: none; stroke: var(--color-water-deep); stroke-width: 2; opacity: 0.6; }
+        .panel-empty { text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 16px 0; }
+
         .habit-check-btn {
             width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--border-light); background: white;
             cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
@@ -311,6 +351,7 @@
                             {{ habit.dayCompleted ? '✓' : '' }}
                         </button>
                         <div class="habit-actions" @click.stop>
+                            <button class="action-icon" @click="openPanel(habit)" title="数据面板">📊</button>
                             <button v-if="!habit.pausedToday" class="action-icon" @click="openPause(habit)" title="暂停">⏸</button>
                             <button v-else class="action-icon" @click="resumeHabit(habit)" title="恢复">▶</button>
                             <button class="action-icon" @click="openEdit(habit)" title="编辑">✏️</button>
@@ -371,11 +412,89 @@
                         <div v-if="planEndDateError" class="form-error">{{ planEndDateError }}</div>
                     </div>
                 </template>
+                <!-- 成果度量字段（F-120） -->
+                <div class="form-group">
+                    <label class="form-label">成果字段（可选，打卡时选填）</label>
+                    <div v-for="(m, i) in habitForm.metricDefs" :key="i" class="metric-row">
+                        <input class="form-input" v-model="m.label" placeholder="字段名，如：总分 / 距离">
+                        <select class="form-input" v-model="m.type">
+                            <option value="number">数字</option>
+                            <option value="duration">时长</option>
+                            <option value="text">文字</option>
+                        </select>
+                        <input v-if="m.type === 'number'" class="form-input unit-input" v-model="m.unit" placeholder="单位">
+                        <button class="metric-del" @click="habitForm.metricDefs.splice(i, 1)" title="删除">✕</button>
+                    </div>
+                    <button class="metric-add" @click="habitForm.metricDefs.push({ label: '', type: 'number', unit: '' })">+ 添加字段</button>
+                    <div class="form-hint">例如「灵活脑学校」：总分（数字）、直觉（数字）；跑步：距离（数字 km）、时长（时:分:秒）</div>
+                </div>
                 <div class="modal-actions">
                     <button v-if="editingHabit.id" class="btn btn-danger" @click="confirmDelete">删除</button>
                     <button class="btn btn-secondary" @click="closeModal">取消</button>
                     <button class="btn btn-primary" @click="saveHabit">保存</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- 打卡弹窗：成果度量选填 + 截图 AI 解析（F-120/F-121，图片只解析不存储） -->
+        <div v-if="showCheckinModal" class="modal-overlay" @click.self="closeCheckin">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">{{ checkinHabit.icon }} {{ checkinHabit.name }} · {{ isToday ? '今日打卡' : currentDate + ' 打卡' }}</div>
+                    <button class="modal-close" @click="closeCheckin">×</button>
+                </div>
+                <div v-for="def in (checkinHabit.metrics || [])" :key="def.key" class="checkin-metric-row">
+                    <span class="metric-label">{{ def.label }}</span>
+                    <input class="form-input"
+                           :type="def.type === 'number' ? 'number' : 'text'"
+                           v-model="checkinForm.values[def.key]"
+                           :placeholder="def.type === 'duration' ? '时:分:秒 或 分:秒' : (def.type === 'number' ? '数字' : '文字')">
+                    <span v-if="def.unit" class="metric-unit">{{ def.unit }}</span>
+                </div>
+                <div class="form-group">
+                    <input class="form-input" v-model="checkinForm.note" placeholder="备注（可选）">
+                </div>
+                <button class="ai-parse-btn" :disabled="aiParsing" @click="pickImage">
+                    {{ aiParsing ? '⏳ AI 解析中...' : '📷 上传截图 AI 自动填写' }}
+                </button>
+                <div v-if="aiParseStatus" :class="['ai-parse-status', { error: aiParseError }]">{{ aiParseStatus }}</div>
+                <input ref="imageInput" type="file" accept="image/*" style="display:none" @change="onImagePicked">
+                <div class="modal-actions">
+                    <button v-if="checkinHabit.dayCompleted" class="btn btn-danger" @click="uncheckFromModal">取消打卡</button>
+                    <button class="btn btn-secondary" @click="closeCheckin">取消</button>
+                    <button class="btn btn-primary" @click="saveCheckin">完成打卡</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据面板（F-122：周/月/季/年，bar/point 可点击回跳当日） -->
+        <div v-if="showPanelModal" class="modal-overlay" @click.self="closePanel">
+            <div class="modal panel-modal">
+                <div class="modal-header">
+                    <div class="modal-title">{{ panelHabit.icon }} {{ panelHabit.name }} · 数据面板</div>
+                    <button class="modal-close" @click="closePanel">×</button>
+                </div>
+                <div class="panel-tabs">
+                    <button v-for="g in granularityTabs" :key="g.key" :class="['panel-tab', { active: panelGranularity === g.key }]" @click="panelGranularity = g.key">{{ g.label }}</button>
+                </div>
+                <div class="panel-section-title">打卡次数（点击柱子回到当日）</div>
+                <div v-if="panelData.length" class="bar-chart">
+                    <div v-for="b in panelData" :key="b.date" class="bar-item" :title="`${b.date}：${b.count} 次`" @click="jumpToDate(b.date)">
+                        <div class="bar" :class="{ 'has-data': b.count > 0 }" :style="{ height: barHeight(b.count) }"></div>
+                    </div>
+                </div>
+                <div class="bar-labels"><span v-for="b in panelData" :key="b.date">{{ b.label }}</span></div>
+                <template v-for="chart in panelMetricCharts" :key="chart.key">
+                    <div class="panel-section-title">{{ chart.label }}（点击圆点回到当日）</div>
+                    <svg class="metric-chart" viewBox="0 0 600 120" preserveAspectRatio="none">
+                        <polyline class="line" :points="chart.polyline" />
+                        <circle v-for="p in chart.points" :key="p.date" class="point" :cx="p.x" :cy="p.y" r="5"
+                                @click="jumpToDate(p.date)">
+                            <title>{{ p.date }}：{{ p.text }}</title>
+                        </circle>
+                    </svg>
+                </template>
+                <div v-if="!panelMetricCharts.length" class="panel-empty">暂无可视化的成果数据</div>
             </div>
         </div>
 
@@ -488,7 +607,7 @@
                 // 弹窗状态
                 const showModal = ref(false);
                 const editingHabit = ref({});
-                const emptyHabitForm = () => ({ name: '', icon: '✅', category: '', color: '#34D399', planType: '', planTimes: null, planStopDate: '', planEndDate: '' });
+                const emptyHabitForm = () => ({ name: '', icon: '✅', category: '', color: '#34D399', planType: '', planTimes: null, planStopDate: '', planEndDate: '', metricDefs: [] });
                 const habitForm = ref(emptyHabitForm());
                 const showEncourage = ref(false);
                 // 暂停弹窗（F-119）
@@ -496,6 +615,24 @@
                 const pausingHabit = ref({});
                 const pauseForm = ref({ reason: '', startDate: '', endDate: '' });
                 const pauseFormError = ref('');
+                // 打卡弹窗（F-120/F-121）
+                const showCheckinModal = ref(false);
+                const checkinHabit = ref({});
+                const checkinForm = ref({ values: {}, note: '' });
+                const imageInput = ref(null);
+                const aiParsing = ref(false);
+                const aiParseStatus = ref('');
+                const aiParseError = ref(false);
+                // 数据面板（F-122）
+                const showPanelModal = ref(false);
+                const panelHabit = ref({});
+                const panelGranularity = ref('week');
+                const granularityTabs = [
+                    { key: 'week', label: '周' },
+                    { key: 'month', label: '月' },
+                    { key: 'quarter', label: '季' },
+                    { key: 'year', label: '年' }
+                ];
                 const encourageChar = ref({});
                 const encourageMessage = ref('');
                 const encourageStreak = ref(0);
@@ -630,8 +767,10 @@
                 const goTodayMonth = () => { const n = new Date(); currentYear.value = n.getFullYear(); currentMonth.value = n.getMonth(); };
 
                 // 打卡/取消打卡（支持补打卡；暂停中的习惯不可打卡，F-119）
+                // 有成果字段的习惯走打卡弹窗（F-120），无字段保持一键打卡
                 const toggleHabit = async (habit) => {
                     if (LifeOS.HabitPlan.isPausedOn(habit, currentDate.value)) return;
+                    if (habit.metrics && habit.metrics.length) { openCheckin(habit); return; }
                     const wasCompleted = isCompletedOnDate(habit.id, currentDate.value);
                     const newStatus = !wasCompleted;
                     await LifeOS.Habit.checkIn(habit.id, currentDate.value, { completed: newStatus });
@@ -644,6 +783,130 @@
                             showEncourageDialog(habit, streak, dayRate.value === 100);
                         }
                     }
+                };
+
+                // ---- F-120/F-121 打卡弹窗 ----
+                const openCheckin = (habit) => {
+                    checkinHabit.value = { ...habit, dayCompleted: isCompletedOnDate(habit.id, currentDate.value) };
+                    const existing = records.value.find(r => r.habitId === habit.id && r.date === currentDate.value);
+                    const values = {};
+                    for (const def of habit.metrics) {
+                        const v = existing && existing.metrics ? existing.metrics[def.key] : undefined;
+                        values[def.key] = v === undefined || v === null ? '' : String(v);
+                    }
+                    checkinForm.value = { values, note: existing ? (existing.note || '') : '' };
+                    aiParseStatus.value = '';
+                    aiParseError.value = false;
+                    showCheckinModal.value = true;
+                };
+                const closeCheckin = () => { showCheckinModal.value = false; };
+                const saveCheckin = async () => {
+                    const habit = checkinHabit.value;
+                    const metrics = {};
+                    for (const def of habit.metrics || []) {
+                        const v = LifeOS.HabitPlan.parseMetricValue(def.type, checkinForm.value.values[def.key]);
+                        if (v !== null) metrics[def.key] = v;
+                    }
+                    await LifeOS.Habit.checkIn(habit.id, currentDate.value, {
+                        completed: true, metrics, note: checkinForm.value.note
+                    });
+                    await loadData();
+                    closeCheckin();
+                    if (isToday.value) {
+                        const streak = getStreakSync(habit);
+                        if (streak >= 7 || dayRate.value === 100) showEncourageDialog(habit, streak, dayRate.value === 100);
+                    }
+                };
+                const uncheckFromModal = async () => {
+                    await LifeOS.Habit.checkIn(checkinHabit.value.id, currentDate.value, { completed: false });
+                    await loadData();
+                    closeCheckin();
+                };
+                // F-121：截图 → AI 解析 → 回填（图片只解析不存储）
+                const pickImage = () => { if (imageInput.value) imageInput.value.click(); };
+                const onImagePicked = async (e) => {
+                    const file = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (!file) return;
+                    aiParsing.value = true;
+                    aiParseError.value = false;
+                    aiParseStatus.value = '上传并解析中...';
+                    try {
+                        const base64 = await LifeOS.Utils.fileToBase64(file);
+                        const dataUrl = await LifeOS.Utils.compressImage(base64, 1200, 0.7);
+                        const prompt = LifeOS.HabitPlan.buildMetricsParsePrompt(checkinHabit.value);
+                        const response = await LifeOS.AIClient.chat({
+                            messages: [{ role: 'user', content: [
+                                { type: 'text', text: prompt },
+                                { type: 'image_url', image_url: { url: dataUrl } }
+                            ] }],
+                            maxTokens: 800
+                        });
+                        const text = LifeOS.AIClient.extractText(response);
+                        const parsed = LifeOS.HabitPlan.parseMetricsFromAI(text, checkinHabit.value.metrics);
+                        const keys = Object.keys(parsed);
+                        if (!keys.length) {
+                            aiParseError.value = true;
+                            aiParseStatus.value = '未从截图识别出字段，请手动填写';
+                        } else {
+                            for (const def of checkinHabit.value.metrics) {
+                                if (parsed[def.key] !== undefined) {
+                                    checkinForm.value.values[def.key] = def.type === 'duration'
+                                        ? LifeOS.HabitPlan.formatDuration(parsed[def.key])
+                                        : String(parsed[def.key]);
+                                }
+                            }
+                            aiParseStatus.value = `已识别 ${keys.length} 个字段，请确认后保存`;
+                        }
+                    } catch (err) {
+                        aiParseError.value = true;
+                        aiParseStatus.value = `AI 解析失败（${err.message || err}），请手动填写`;
+                    } finally {
+                        aiParsing.value = false;
+                    }
+                };
+
+                // ---- F-122 数据面板 ----
+                const openPanel = (habit) => {
+                    panelHabit.value = habit;
+                    panelGranularity.value = 'week';
+                    showPanelModal.value = true;
+                };
+                const closePanel = () => { showPanelModal.value = false; };
+                const panelData = computed(() => {
+                    if (!panelHabit.value.id) return [];
+                    return LifeOS.HabitPlan.aggregateRecords(panelHabit.value, records.value, panelGranularity.value, realToday.value);
+                });
+                const panelMaxCount = computed(() => Math.max(...panelData.value.map(b => b.count), 1));
+                const barHeight = (count) => `${Math.max((count / panelMaxCount.value) * 100, 2)}%`;
+                // 每个数字/时长字段一条折线（点可点击）
+                const panelMetricCharts = computed(() => {
+                    const defs = (panelHabit.value.metrics || []).filter(d => d.type !== 'text');
+                    const data = panelData.value;
+                    const charts = [];
+                    for (const def of defs) {
+                        const withVal = data.map((b, i) => ({ b, i, v: b.metrics[def.key] })).filter(x => x.v !== undefined);
+                        if (!withVal.length) continue;
+                        const maxV = Math.max(...withVal.map(x => x.v), 1);
+                        const stepX = 600 / data.length;
+                        const points = withVal.map(x => ({
+                            date: x.b.date,
+                            x: Math.round(stepX * (x.i + 0.5)),
+                            y: Math.round(110 - (x.v / maxV) * 100),
+                            text: LifeOS.HabitPlan.formatMetricValue(def, x.v)
+                        }));
+                        charts.push({
+                            key: def.key,
+                            label: `${def.label}${def.unit ? '（' + def.unit + '）' : ''}`,
+                            points,
+                            polyline: points.map(p => `${p.x},${p.y}`).join(' ')
+                        });
+                    }
+                    return charts;
+                });
+                const jumpToDate = (date) => {
+                    closePanel();
+                    selectDate(date);
                 };
 
                 // 角色激励
@@ -677,7 +940,8 @@
                         planType: plan ? plan.type : '',
                         planTimes: plan ? plan.times : null,
                         planStopDate: plan && plan.stopDate ? plan.stopDate : '',
-                        planEndDate: plan && plan.endDate ? plan.endDate : ''
+                        planEndDate: plan && plan.endDate ? plan.endDate : '',
+                        metricDefs: (habit.metrics || []).map(d => ({ label: d.label, type: d.type, unit: d.unit || '' }))
                     };
                     showModal.value = true;
                 };
@@ -711,11 +975,17 @@
                     if (!habitForm.value.name.trim()) return;
                     const plan = buildPlan();
                     if (plan === undefined) { alert('请完整填写计划：次数需 ≥1；限时计划需在 30 天窗口内选择截止日期'); return; }
-                    const { planType, planTimes, planStopDate, planEndDate, ...base } = habitForm.value;
+                    const { planType, planTimes, planStopDate, planEndDate, metricDefs, ...base } = habitForm.value;
+                    // F-120：成果字段定义（key 即字段名，去重）
+                    const seen = new Set();
+                    const metrics = (metricDefs || [])
+                        .filter(d => d.label && d.label.trim())
+                        .map(d => ({ key: d.label.trim(), label: d.label.trim(), type: d.type, ...(d.type === 'number' && d.unit && d.unit.trim() ? { unit: d.unit.trim() } : {}) }))
+                        .filter(d => { if (seen.has(d.key)) return false; seen.add(d.key); return true; });
                     if (editingHabit.value.id) {
-                        await LifeOS.Habit.update(editingHabit.value.id, { ...base, plan });
+                        await LifeOS.Habit.update(editingHabit.value.id, { ...base, plan, metrics });
                     } else {
-                        await LifeOS.Habit.create({ ...base, plan });
+                        await LifeOS.Habit.create({ ...base, plan, metrics });
                     }
                     await loadData();
                     closeModal();
@@ -749,7 +1019,12 @@
                     await loadData();
                 };
 
-                onMounted(loadData);
+                onMounted(async () => {
+                    await loadData();
+                    // F-122：支持 habits.html?date=YYYY-MM-DD 定位日期（数据面板/外部回跳）
+                    const m = window.location.search.match(/[?&]date=(\d{4}-\d{2}-\d{2})/);
+                    if (m) selectDate(m[1]);
+                });
 
                 return {
                     habits, habitsWithStreak, dayRate, maxStreak, totalCheckIns,
@@ -759,9 +1034,15 @@
                     showEncourage, encourageChar, encourageMessage, encourageStreak,
                     showPauseModal, pausingHabit, pauseForm, pauseFormError,
                     limitedMaxDate, planEndDateError, planProgressText,
+                    showCheckinModal, checkinHabit, checkinForm, imageInput,
+                    aiParsing, aiParseStatus, aiParseError,
+                    showPanelModal, panelHabit, panelGranularity, granularityTabs,
+                    panelData, panelMetricCharts, barHeight,
                     changeDate, goTodayDate, onDateInput, selectDate,
                     prevMonth, nextMonth, goTodayMonth,
                     toggleHabit, openCreate, openEdit, closeModal, saveHabit, deleteHabit, confirmDelete,
+                    openCheckin, closeCheckin, saveCheckin, uncheckFromModal, pickImage, onImagePicked,
+                    openPanel, closePanel, jumpToDate,
                     openPause, closePause, savePause, resumeHabit,
                     closeEncourage
                 };

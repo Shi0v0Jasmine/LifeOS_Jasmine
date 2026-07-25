@@ -1069,6 +1069,137 @@
                 checkDate = this.addDays(checkDate, -1);
             }
             return streak;
+        },
+
+        // ---- F-120 打卡成果度量 ----
+        // 时长解析："H:MM:SS" / "M:SS" / 纯数字(秒)，支持中文单位（时/分/秒）；非法返回 null
+        parseDuration(str) {
+            if (str === null || str === undefined || str === '') return null;
+            if (typeof str === 'number') return isFinite(str) && str >= 0 ? Math.round(str) : null;
+            let s = String(str).trim();
+            if (!s) return null;
+            s = s.replace(/\s+/g, '')
+                 .replace(/[时hH]/, ':').replace(/[分mM]/, ':').replace(/[秒sS]$/, '');
+            if (!/^\d+(\.\d+)?(:\d+(\.\d+)?){0,2}$/.test(s)) return null;
+            const parts = s.split(':').map(Number);
+            if (parts.length === 1) return Math.round(parts[0]);
+            const sec = parts[parts.length - 1];
+            if (sec >= 60) return null;
+            if (parts.length === 3) {
+                if (parts[1] >= 60) return null;
+                return Math.round(parts[0] * 3600 + parts[1] * 60 + sec);
+            }
+            return Math.round(parts[0] * 60 + sec);
+        },
+        // 时长格式化：>=1h → "H:MM:SS"，否则 "M:SS"
+        formatDuration(seconds) {
+            if (seconds === null || seconds === undefined || !isFinite(seconds)) return '';
+            const s = Math.round(seconds);
+            const h = Math.floor(s / 3600);
+            const min = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            if (h > 0) return `${h}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+            return `${min}:${String(sec).padStart(2, '0')}`;
+        },
+        // 度量值归一：number→浮点、duration→秒、text→字符串；空/非法返回 null
+        parseMetricValue(type, raw) {
+            if (raw === null || raw === undefined || raw === '') return null;
+            if (type === 'number') {
+                const n = typeof raw === 'number' ? raw : parseFloat(String(raw).trim());
+                return isFinite(n) ? n : null;
+            }
+            if (type === 'duration') return this.parseDuration(raw);
+            return String(raw).trim() || null;
+        },
+        // 度量值展示
+        formatMetricValue(def, value) {
+            if (value === null || value === undefined) return '';
+            if (def.type === 'duration') return this.formatDuration(value);
+            if (def.type === 'number') return def.unit ? `${value} ${def.unit}` : String(value);
+            return String(value);
+        },
+
+        // ---- F-122 数据面板聚合 ----
+        // granularity: 'week'(日桶×7) | 'month'(日桶×当月天数) | 'quarter'(月桶×3) | 'year'(月桶×12)
+        // 返回 [{ date(桶起始 YYYY-MM-DD), label, count, metrics:{key:合计} }]
+        aggregateRecords(habit, records, granularity, refDate) {
+            const buckets = [];
+            const pushDay = (dateStr, label) => buckets.push({ date: dateStr, end: dateStr, label });
+            if (granularity === 'week') {
+                const { start } = this.weekRange(refDate);
+                const wd = ['一', '二', '三', '四', '五', '六', '日'];
+                for (let i = 0; i < 7; i++) pushDay(this.addDays(start, i), wd[i]);
+            } else if (granularity === 'month') {
+                const { start, end } = this.monthRange(refDate);
+                const days = parseInt(end.slice(8), 10);
+                for (let d = 1; d <= days; d++) {
+                    pushDay(this.addDays(start, d - 1), `${d}`);
+                }
+            } else {
+                // quarter / year：月桶
+                const d = new Date(refDate + 'T00:00:00');
+                const startMonth = granularity === 'quarter'
+                    ? Math.floor(d.getMonth() / 3) * 3
+                    : 0;
+                const count = granularity === 'quarter' ? 3 : 12;
+                for (let i = 0; i < count; i++) {
+                    const first = new Date(d.getFullYear(), startMonth + i, 1);
+                    const last = new Date(d.getFullYear(), startMonth + i + 1, 0);
+                    buckets.push({
+                        date: Utils.formatDate(first),
+                        end: Utils.formatDate(last),
+                        label: `${first.getMonth() + 1}月`
+                    });
+                }
+            }
+            const metricDefs = habit.metrics || [];
+            return buckets.map(b => {
+                const inBucket = records.filter(r =>
+                    r.habitId === habit.id && r.completed && r.date >= b.date && r.date <= b.end
+                );
+                const metrics = {};
+                for (const def of metricDefs) {
+                    if (def.type === 'text') continue;
+                    let sum = 0;
+                    let has = false;
+                    for (const r of inBucket) {
+                        const v = r.metrics ? r.metrics[def.key] : undefined;
+                        if (v !== null && v !== undefined && isFinite(v)) { sum += v; has = true; }
+                    }
+                    if (has) metrics[def.key] = def.type === 'duration' ? Math.round(sum) : Math.round(sum * 100) / 100;
+                }
+                return { date: b.date, label: b.label, count: inBucket.length, metrics };
+            });
+        },
+
+        // ---- F-121 打卡图片 AI 解析（图片只解析不存储） ----
+        // 依据习惯的度量字段定义生成解析 prompt
+        buildMetricsParsePrompt(habit) {
+            const defs = habit.metrics || [];
+            const lines = defs.map(def => {
+                const typeDesc = def.type === 'number' ? `数字${def.unit ? '（单位：' + def.unit + '）' : ''}`
+                    : def.type === 'duration' ? '时长（输出 "H:MM:SS" 或 "M:SS" 格式）'
+                    : '文字';
+                return `- "${def.key}"（${def.label}）：${typeDesc}`;
+            });
+            return [
+                `这是一张「${habit.name}」的打卡截图。请从中提取以下字段的值：`,
+                ...lines,
+                '要求：只输出一个 JSON 对象，键为上述字段名，值为提取结果；截图中没有的字段不要输出；不要输出任何解释文字。'
+            ].join('\n');
+        },
+        // 解析 AI 返回文本 → { key: 归一值 }（容错 JSON 提取 + 类型归一 + 无效剔除）
+        parseMetricsFromAI(text, metricDefs) {
+            const data = Utils.parseJSONSafe(text, null);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return {};
+            const result = {};
+            for (const def of metricDefs || []) {
+                // 模型可能返回 key 或 label
+                const raw = data[def.key] !== undefined ? data[def.key] : data[def.label];
+                const v = this.parseMetricValue(def.type, raw);
+                if (v !== null) result[def.key] = v;
+            }
+            return result;
         }
     };
 
@@ -1083,6 +1214,7 @@
                 color: habit.color || '#34D399',
                 plan: habit.plan || null,     // F-117/F-118：{ type:'weekly'|'monthly'|'limited', times, startDate, stopDate?, endDate? }
                 pauses: habit.pauses || [],   // F-119：[{ reason, startDate, endDate|null }]
+                metrics: habit.metrics || [], // F-120：[{ key, label, type:'number'|'duration'|'text', unit? }]
                 createdAt: Utils.now(),
                 updatedAt: Utils.now()
             };

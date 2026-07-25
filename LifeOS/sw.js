@@ -1,6 +1,6 @@
-const STATIC_CACHE = 'lifeos-static-v20260725-4';
-const DATA_CACHE = 'lifeos-data-v20260725-4';
-const RUNTIME_CACHE = 'lifeos-runtime-v20260725-4';
+const STATIC_CACHE = 'lifeos-static-v20260725-5';
+const DATA_CACHE = 'lifeos-data-v20260725-5';
+const RUNTIME_CACHE = 'lifeos-runtime-v20260725-5';
 
 const STATIC_ASSETS = [
     './',
