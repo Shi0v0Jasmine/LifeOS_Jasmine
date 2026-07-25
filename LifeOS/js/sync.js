@@ -50,7 +50,7 @@
     const PULL_INTERVAL_MS = 5 * 60 * 1000;   // 定时 pull 间隔
     const EPOCH = '1970-01-01T00:00:00.000Z'; // 首次全量同步起点
     const DEVICE_STATUS_CACHE_MS = 5 * 60 * 1000; // 设备状态自查缓存（F-111/F-112）
-    const APP_VERSION = '5.0.0';              // 心跳上报用（F-109）
+    const APP_VERSION = '5.1.0';              // 心跳上报用（F-109）
 
     /**
      * CloudBase Web SDK CDN（官方文档来源：
@@ -268,21 +268,30 @@
     function createCloudBaseAdapter(cfg) {
         let appPromise = null;
 
-        // 初始化 + 匿名登录（幂等，失败允许重试）
+        // 初始化 + 登录（幂等，失败允许重试）
+        // 策略：已有任意登录态（账号或匿名）则复用；无则匿名登录降级
         async function getApp() {
             if (!appPromise) {
                 appPromise = (async () => {
                     await loadCloudBaseSdk();
                     const app = window.cloudbase.init({ env: cfg.cloudbaseEnvId });
-                    // 匿名登录（需在 CloudBase 控制台开启，见 guide/cloudbase-setup.md）
-                    // session 持久化按 SDK 默认
-                    await app.auth().anonymousAuthProvider().signIn();
+                    const auth = app.auth();
+                    // 策略：已有任意登录态（账号登录优先，匿名次之）则复用；无则匿名登录降级
+                    const loginState = await auth.getLoginState();
+                    if (loginState && loginState.user) {
+                        return app;
+                    }
+                    // 无登录态 → 匿名登录降级
+                    await auth.anonymousAuthProvider().signIn();
                     return app;
                 })();
                 appPromise.catch(() => { appPromise = null; });
             }
             return appPromise;
         }
+
+        // 重置 appPromise（登录态变化后需要重建）
+        function resetApp() { appPromise = null; }
 
         // SDK 调用无内建超时，统一包 15s
         function withTimeout(promise, label) {
@@ -308,6 +317,48 @@
                 } catch (err) {
                     const e = normalizeCloudBaseError(err, 'CloudBase 连接失败');
                     return { ok: false, message: e.message };
+                }
+            },
+
+            // ---- 账号登录（F-113） ----
+            async login(username, password) {
+                try {
+                    await loadCloudBaseSdk();
+                    const app = window.cloudbase.init({ env: cfg.cloudbaseEnvId });
+                    const auth = app.auth();
+                    await withTimeout(auth.signInWithUsernameAndPassword(username, password), 'CloudBase 登录');
+                    // 登录成功后重建 appPromise，确保后续 getApp() 复用新登录态
+                    resetApp();
+                    return { ok: true };
+                } catch (err) {
+                    throw normalizeCloudBaseError(err, 'CloudBase 登录失败');
+                }
+            },
+
+            async logout() {
+                try {
+                    await loadCloudBaseSdk();
+                    const app = window.cloudbase.init({ env: cfg.cloudbaseEnvId });
+                    const auth = app.auth();
+                    await withTimeout(auth.signOut(), 'CloudBase 登出');
+                    resetApp();
+                    return { ok: true };
+                } catch (err) {
+                    throw normalizeCloudBaseError(err, 'CloudBase 登出失败');
+                }
+            },
+
+            async getCurrentUser() {
+                try {
+                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const auth = app.auth();
+                    const loginState = await auth.getLoginState();
+                    if (loginState && loginState.user) {
+                        return { uid: loginState.user.uid, isAnonymous: loginState.user.isAnonymous || false };
+                    }
+                    return null;
+                } catch (err) {
+                    return null;
                 }
             },
 
@@ -429,6 +480,7 @@
             if (!lastSyncAt && provider === 'supabase') {
                 lastSyncAt = await S.get('lastSyncAt', null);
             }
+            const accountUid = await S.get('accountUid', '') || '';
             const cfg = {
                 syncProvider: provider,
                 url: normalizeUrl(await S.get('supabaseUrl', '')),
@@ -436,7 +488,8 @@
                 cloudbaseEnvId: (await S.get('cloudbaseEnvId', '') || '').trim(),
                 deviceId: await S.get('deviceId', null),
                 deviceName: await S.get('deviceName', '') || '',
-                isMainDevice: await S.get('isMainDevice', false),
+                isMainDevice: !!(await S.get('isMainDevice', false)) || !!accountUid,
+                accountUid,
                 conflictPolicy: await S.get('conflictPolicy', 'lww'),
                 lastSyncAt
             };
@@ -741,7 +794,8 @@
                 lastSeenAt: now,
                 isMaster: !!cfg.isMainDevice,
                 status: prev.status || 'active',
-                appVersion: APP_VERSION
+                appVersion: APP_VERSION,
+                accountUid: cfg.accountUid || null
             };
             try {
                 await adapter.deviceUpsert({ id: cfg.deviceId, data: doc, updated_at: now });
@@ -859,6 +913,47 @@
                 return { ok: false, message: provider === 'supabase' ? '请填写 Supabase URL 和 anon key' : '请填写 CloudBase 环境 ID' };
             }
             return adapter.testConnection();
+        },
+
+        // ---- 账号登录（F-113~F-114） ----
+        async accountLogin(username, password) {
+            const cfg = this._config || await this._loadConfig();
+            if (cfg.syncProvider !== 'cloudbase') throw new Error('账号登录仅支持 CloudBase 后端');
+            const adapter = await this._ensureAdapter();
+            if (!adapter || !adapter.login) throw new Error('CloudBase 后端未就绪');
+            const result = await adapter.login(username, password);
+            // 获取登录用户 uid 并存入 settings
+            const user = await adapter.getCurrentUser();
+            if (user && user.uid) {
+                await window.LifeOS.Settings.set('accountUid', user.uid);
+            }
+            // 登录态变化后重建引擎，使新登录态与主设备判定生效，并触发一次自动同步
+            await this.reload();
+            return result;
+        },
+
+        async accountLogout() {
+            const cfg = this._config || await this._loadConfig();
+            if (cfg.syncProvider === 'cloudbase') {
+                const adapter = await this._ensureAdapter();
+                if (adapter && adapter.logout) {
+                    await adapter.logout();
+                }
+            }
+            await window.LifeOS.Settings.set('accountUid', '');
+            // 重建引擎：清除账号登录态，回退匿名登录，主设备权限按本机开关重新判定
+            await this.reload();
+            return { ok: true };
+        },
+
+        async getAccountInfo() {
+            const cfg = this._config || await this._loadConfig();
+            if (cfg.syncProvider !== 'cloudbase') return null;
+            const adapter = await this._ensureAdapter();
+            if (!adapter || !adapter.getCurrentUser) return null;
+            const user = await adapter.getCurrentUser();
+            if (!user) return null;
+            return { uid: user.uid, isAnonymous: user.isAnonymous, storedUid: cfg.accountUid };
         },
 
         // 暴露给单元测试与调试

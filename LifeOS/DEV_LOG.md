@@ -1,8 +1,8 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v4.0.4（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
-> **最后更新**: 【2026-07-22】
+> **当前版本**: v5.1.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **最后更新**: 【2026-07-25】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
 
@@ -681,6 +681,22 @@ node --check LifeOS/js/sync.js → OK
 | 修复 | `tasks.html`：子任务日期框平时以 `type="text"` 显示占位「截止日期（可选）」，`onfocus` 切换为 `type="date"` 唤起原生日期选择，空值失焦切回 text（`nl-plan-subtask-input-date` 同模式待后续统一，本期未动） |
 | SW 缓存 | `v20260724-2` → `v20260724-3` |
 | 部署/校验 | tasks.html + sw.js 单文件部署，curl 校验 ✅ |
+
+### 9.21 v5.1.0 账号密码登录与主设备权限跟随账号（2026-07-25）
+
+**背景**：F-105 主设备开关绑定在本机 IndexedDB，换浏览器/清缓存/换域名后需重设。v5.1.0 通过 CloudBase 用户名密码登录把主设备权限提升到账号属性，同时保留 deviceId 按浏览器独立（同步归因需要）。
+
+| 项目 | 内容 |
+|------|------|
+| F-113 账号登录/登出 | `settings.html` 新增「账号」卡片：未登录时显示用户名/密码表单 + CloudBase 控制台预建账号提示；已登录时显示 UID、匿名/主设备权限徽标 + 登出按钮。`sync.js` CloudBase adapter 新增 `login(username, password)` / `logout()` / `getCurrentUser()`，使用 SDK `auth.signInWithUsernameAndPassword()` |
+| F-114 主设备权限跟随账号 | `_loadConfig()` 中 `isMainDevice = 本机开关 || !!accountUid`；登录成功后 `accountUid` 写入 settings，引擎 `reload()` 使新配置与主设备判定立即生效；登出后 `accountUid` 清空并 `reload()` 回退 |
+| 匿名登录降级 | `getApp()` 保持「已有账号 session 复用账号，无则匿名登录」；未登录设备作为普通设备仍可同步 |
+| 心跳 accountUid | `Sync._heartbeat()` 设备记录写入 `accountUid`，云端 devices 集合可按账号识别所有者设备 |
+| 安全规则 | F-115 `auth.uid == '所有者uid'` 收紧本期未执行：当前仍保持 `auth != null`，待用户确认所有在用设备已完成登录后再手动迁移 |
+| 测试 | `tests/sync-merge.test.js` 新增 4 用例：CloudBase adapter login/logout、accountLogin 后写入 uid 且变主设备、accountLogout 清空 uid、心跳包含 accountUid；sync-merge **29**/29 PASS，core-data 10、subtask 9、ai-planner-parse 5/6（设计预期）全绿 |
+| SW 缓存 | `v20260724-3` → `v20260725-1` |
+| 部署/校验 | settings.html / js/sync.js / sw.js 单文件部署，curl 校验线上内容均含新代码 ✅ |
+| 已知局限 | CloudBase 用户名密码登录需控制台预先创建用户；Passkey（F-116）本期 Won't；安全规则收紧需用户后续手动执行 |
 
 ### 9.7 与既有功能的关系
 

@@ -205,6 +205,55 @@
                         </div>
                     </div>
 
+                    <!-- 账号登录（F-113~F-114） -->
+                    <div class="settings-card">
+                        <div class="settings-card-header">
+                            <span class="settings-card-icon">👤</span>
+                            <span class="settings-card-title">账号</span>
+                        </div>
+
+                        <div v-if="syncForm.syncProvider !== 'cloudbase'" class="form-hint" style="margin-bottom: 12px;">
+                            账号登录仅适用于「多端同步」选择 CloudBase 后端时；当前后端为 {{ syncForm.syncProvider === 'none' ? '关闭' : 'Supabase' }}。
+                        </div>
+
+                        <template v-else>
+                            <template v-if="!accountInfo.uid">
+                                <div class="form-hint" style="margin-bottom: 12px;">
+                                    账号请在 CloudBase 控制台「身份验证 → 用户管理」中预先创建；App 仅做登录/登出，不提供注册。未登录时将自动降级为匿名登录。
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">用户名</label>
+                                    <input class="form-input" v-model="accountForm.username" placeholder="如：jasmine" autocomplete="username">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">密码</label>
+                                    <input class="form-input" type="password" v-model="accountForm.password" placeholder="密码" autocomplete="current-password">
+                                </div>
+                            </template>
+
+                            <div v-else class="form-group">
+                                <div class="form-hint" style="margin-bottom: 4px;">
+                                    已登录账号：{{ accountDisplayName }}
+                                    <span v-if="accountInfo.isAnonymous" class="badge-main" style="margin-left: 6px;">匿名</span>
+                                    <span v-else-if="syncForm.isMainDevice" class="badge-main" style="margin-left: 6px;">主设备权限</span>
+                                </div>
+                                <div class="form-hint">UID：{{ accountInfo.uid }}</div>
+                            </div>
+
+                            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                                <button v-if="!accountInfo.uid" class="btn btn-primary" @click="doAccountLogin" :disabled="accountLoggingIn">
+                                    {{ accountLoggingIn ? '登录中...' : '🔑 登录' }}
+                                </button>
+                                <button v-else class="btn btn-secondary" @click="doAccountLogout" :disabled="accountLoggingIn">
+                                    {{ accountLoggingIn ? '登出中...' : '🚪 登出' }}
+                                </button>
+                            </div>
+                            <div v-if="accountMessage" :class="['test-result', accountMessage.type, { show: true }]">
+                                {{ accountMessage.message }}
+                            </div>
+                        </template>
+                    </div>
+
                     <!-- 多端同步 -->
                     <div class="settings-card">
                         <div class="settings-card-header">
@@ -511,6 +560,65 @@
                     autoSave: true
                 });
 
+                // ===== 账号登录（F-113~F-114） =====
+                const accountForm = ref({ username: '', password: '' });
+                const accountInfo = ref({ uid: '', isAnonymous: true });
+                const accountLoggingIn = ref(false);
+                const accountMessage = ref({ type: '', message: '' });
+                const accountDisplayName = computed(() => {
+                    const uid = accountInfo.value.uid || '';
+                    return uid.length > 12 ? uid.slice(0, 12) + '…' : uid;
+                });
+
+                const loadAccountInfo = async () => {
+                    if (!LifeOS.Sync || !LifeOS.Sync.getAccountInfo) {
+                        accountInfo.value = { uid: '', isAnonymous: true };
+                        return;
+                    }
+                    try {
+                        const info = await LifeOS.Sync.getAccountInfo();
+                        accountInfo.value = info || { uid: '', isAnonymous: true };
+                    } catch (err) {
+                        accountInfo.value = { uid: '', isAnonymous: true };
+                    }
+                };
+
+                const doAccountLogin = async () => {
+                    accountMessage.value = { type: '', message: '' };
+                    if (!accountForm.value.username || !accountForm.value.password) {
+                        accountMessage.value = { type: 'error', message: '请输入用户名和密码' };
+                        return;
+                    }
+                    accountLoggingIn.value = true;
+                    try {
+                        await LifeOS.Sync.accountLogin(accountForm.value.username, accountForm.value.password);
+                        accountForm.value = { username: '', password: '' };
+                        accountMessage.value = { type: 'success', message: '✅ 登录成功，已同步账号状态' };
+                        await loadSyncSettings();
+                        await loadDeviceList();
+                    } catch (err) {
+                        accountMessage.value = { type: 'error', message: '❌ 登录失败：' + err.message };
+                    } finally {
+                        accountLoggingIn.value = false;
+                    }
+                };
+
+                const doAccountLogout = async () => {
+                    if (!confirm('确定登出当前账号吗？登出后将降级为匿名登录。')) return;
+                    accountMessage.value = { type: '', message: '' };
+                    accountLoggingIn.value = true;
+                    try {
+                        await LifeOS.Sync.accountLogout();
+                        accountMessage.value = { type: 'success', message: '✅ 已登出' };
+                        await loadSyncSettings();
+                        await loadDeviceList();
+                    } catch (err) {
+                        accountMessage.value = { type: 'error', message: '❌ 登出失败：' + err.message };
+                    } finally {
+                        accountLoggingIn.value = false;
+                    }
+                };
+
                 // ===== 多端同步 =====
                 const SYNC_STORE_LABELS = { tasks: '任务', timeline: '时间轴', habits: '习惯', habitRecords: '习惯打卡', reviews: '复盘', skills: '技能', notes: '笔记', characters: '角色', moments: '时刻' };
                 const syncForm = ref({ deviceName: '', deviceId: '', isMainDevice: false, syncProvider: 'none', supabaseUrl: '', supabaseAnonKey: '', cloudbaseEnvId: '', conflictPolicy: 'lww' });
@@ -563,6 +671,7 @@
                     lastSyncError.value = await LifeOS.Settings.get('lastSyncError', null);
                     syncConflicts.value = await LifeOS.Settings.get('syncConflicts', []);
                     knownDevices.value = await LifeOS.Settings.get('knownDevices', {});
+                    await loadAccountInfo();
                 };
 
                 const saveDeviceInfo = async () => {
@@ -810,6 +919,8 @@
                     apiForm, testing, testResult, showImport, showReset, importFile, importStrategy, importFileInput,
                     apiHistory, settings,
                     saveApiConfig, testConnection, toggleSetting, exportData, handleImportFile, confirmImport, confirmReset, clearHistory,
+                    accountForm, accountInfo, accountLoggingIn, accountMessage, accountDisplayName,
+                    loadAccountInfo, doAccountLogin, doAccountLogout,
                     syncForm, syncTesting, syncTestResult, syncing, lastSyncAt, lastSyncError, syncConflicts,
                     lastSyncAtText, storeLabel, deviceLabel, conflictSummary, formatSyncTime,
                     saveDeviceInfo, toggleMainDevice, saveSyncConfig, testSyncConnection, syncNow, resolveConflict,

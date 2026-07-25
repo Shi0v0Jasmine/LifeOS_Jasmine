@@ -388,14 +388,32 @@ async function testStoreTableMapping() {
 // ============ 双后端 adapter 测试 ============
 
 function makeCloudBaseMock(capture) {
+    capture.currentUser = capture.currentUser || null;
+    capture.loginCalls = capture.loginCalls || [];
+    capture.logoutCalls = capture.logoutCalls || 0;
+    capture.anonymousSignIn = capture.anonymousSignIn || 0;
     return {
         init({ env }) {
             capture.env = env;
             return {
                 auth() {
                     return {
+                        getLoginState: async () => ({ user: capture.currentUser }),
+                        signInWithUsernameAndPassword: async (username, password) => {
+                            capture.loginCalls.push({ username, password });
+                            capture.currentUser = { uid: 'uid-' + username, isAnonymous: false };
+                        },
+                        signOut: async () => {
+                            capture.logoutCalls++;
+                            capture.currentUser = null;
+                        },
                         anonymousAuthProvider() {
-                            return { signIn: async () => { capture.signedIn = true; } };
+                            return {
+                                signIn: async () => {
+                                    capture.anonymousSignIn++;
+                                    capture.currentUser = { uid: 'anon-uid', isAnonymous: true };
+                                }
+                            };
                         }
                     };
                 },
@@ -479,7 +497,7 @@ async function testCloudBaseAdapterUpsertAndFetch() {
     }]);
 
     assert.strictEqual(capture.env, 'env-test', '应以 envId 初始化 SDK');
-    assert.ok(capture.signedIn, '应执行匿名登录');
+    assert.ok(capture.anonymousSignIn > 0, '应执行匿名登录');
     assert.strictEqual(capture.sets[0].collection, 'habit_records', '集合名应与表名映射一致');
     assert.strictEqual(capture.sets[0].id, 'r1', 'doc _id 应为记录 id');
     // vm 跨 realm 对象，序列化后比较
@@ -676,6 +694,84 @@ async function testDeviceStatusCacheReuse() {
     assert.strictEqual(calls.deviceGet, 2, 'force=true 应强制刷新');
 }
 
+async function testCloudBaseAdapterLoginLogout() {
+    const { LifeOS, context } = loadLifeOSWithContext();
+    const capture = { sets: [], whereConds: [], queryData: [] };
+    context.window.cloudbase = makeCloudBaseMock(capture);
+
+    const adapter = LifeOS.Sync._createAdapterFrom('cloudbase', { cloudbaseEnvId: 'env-login' });
+    const loginResult = await adapter.login('jasmine', 'secret');
+    assert.strictEqual(loginResult.ok, true, '登录应返回 ok');
+    assert.strictEqual(capture.loginCalls.length, 1, '应调用一次用户名密码登录');
+    assert.strictEqual(capture.loginCalls[0].username, 'jasmine', '用户名应透传');
+    assert.strictEqual(capture.loginCalls[0].password, 'secret', '密码应透传');
+
+    const user = await adapter.getCurrentUser();
+    assert.ok(user, 'getCurrentUser 应返回用户');
+    assert.strictEqual(user.uid, 'uid-jasmine', 'uid 应由 mock 生成');
+    assert.strictEqual(user.isAnonymous, false, '账号登录后不应为匿名');
+
+    const logoutResult = await adapter.logout();
+    assert.strictEqual(logoutResult.ok, true, '登出应返回 ok');
+    assert.strictEqual(capture.logoutCalls, 1, '应调用一次登出');
+    const afterLogout = await adapter.getCurrentUser();
+    assert.ok(afterLogout, '登出后 getCurrentUser 应降级为匿名登录');
+    assert.strictEqual(afterLogout.isAnonymous, true, '登出后应为匿名用户');
+}
+
+async function testAccountLoginMakesMasterDevice() {
+    const { LifeOS, context } = loadLifeOSWithContext();
+    const capture = { sets: [], whereConds: [], queryData: [] };
+    context.window.cloudbase = makeCloudBaseMock(capture);
+
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('deviceId', 'dev-self');
+    await LifeOS.Settings.set('deviceName', '测试机');
+    await LifeOS.Settings.set('isMainDevice', false);
+    await LifeOS.Settings.set('syncProvider', 'cloudbase');
+    await LifeOS.Settings.set('cloudbaseEnvId', 'env-test');
+
+    const result = await LifeOS.Sync.accountLogin('jasmine', 'secret');
+    assert.strictEqual(result.ok, true, 'accountLogin 应返回 ok');
+    assert.strictEqual(await LifeOS.Settings.get('accountUid'), 'uid-jasmine', '登录后应写入 accountUid');
+
+    const cfg = await LifeOS.Sync._loadConfig();
+    assert.strictEqual(cfg.isMainDevice, true, '登录账号后应自动获得主设备权限');
+    assert.strictEqual(cfg.accountUid, 'uid-jasmine', '配置中 accountUid 应同步');
+}
+
+async function testAccountLogoutClearsUid() {
+    const { LifeOS, context } = loadLifeOSWithContext();
+    const capture = { sets: [], whereConds: [], queryData: [] };
+    context.window.cloudbase = makeCloudBaseMock(capture);
+
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('deviceId', 'dev-self');
+    await LifeOS.Settings.set('syncProvider', 'cloudbase');
+    await LifeOS.Settings.set('cloudbaseEnvId', 'env-test');
+    await LifeOS.Settings.set('accountUid', 'uid-jasmine');
+
+    await LifeOS.Sync.accountLogout();
+    assert.strictEqual(await LifeOS.Settings.get('accountUid'), '', '登出后 accountUid 应清空');
+    const cfg = await LifeOS.Sync._loadConfig();
+    assert.strictEqual(cfg.isMainDevice, false, '清空 accountUid 且本机开关关闭时不再是主设备');
+}
+
+async function testHeartbeatIncludesAccountUid() {
+    const { LifeOS } = loadLifeOSWithContext();
+    const { calls, adapter } = makeDeviceMockAdapter(null);
+    await setupSyncWithMock(LifeOS, adapter, { isMainDevice: false });
+    await LifeOS.Settings.set('accountUid', 'uid-jasmine');
+    await LifeOS.Sync._loadConfig();
+
+    await LifeOS.Sync._heartbeat();
+
+    assert.strictEqual(calls.deviceUpsert.length, 1, '心跳应 upsert 一条设备记录');
+    assert.strictEqual(calls.deviceUpsert[0].data.accountUid, 'uid-jasmine', '心跳设备记录应包含 accountUid');
+}
+
 const tests = [
     testRemoteNewerWithoutLocalChangesUsesRemote,
     testLocalNewerKeepsLocal,
@@ -701,7 +797,11 @@ const tests = [
     testSleepingDeviceBlockedFromPush,
     testRevokedDeviceDisablesSync,
     testSetDeviceStatusMasterGuard,
-    testDeviceStatusCacheReuse
+    testDeviceStatusCacheReuse,
+    testCloudBaseAdapterLoginLogout,
+    testAccountLoginMakesMasterDevice,
+    testAccountLogoutClearsUid,
+    testHeartbeatIncludesAccountUid
 ];
 
 (async () => {
