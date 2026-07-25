@@ -37,7 +37,7 @@ D:\FUN_VibeCoding\LifeOS\
 ├── server.js                    ← 本机 Express 后端（静态托管 + JSON 持久化 API）
 ├── package.json                 ← Node/Express 启动配置
 ├── PRD_LifeOS.md                ← 产品需求文档
-├── character_dialogue_styles.json ← 角色台词风格数据
+├── LifeOS/data/character_dialogue_styles.json ← 角色台词风格数据
 └── README.md                    ← 本文件
 ```
 
@@ -205,7 +205,7 @@ node server.js
 ## 🗂️ 相关文件
 
 - `PRD_LifeOS.md` — 完整产品需求文档（功能清单、验收标准、MoSCoW 优先级）
-- `character_dialogue_styles.json` — 31 位核心角色的台词风格描述与示例台词
+- `LifeOS/data/character_dialogue_styles.json` — 31 位核心角色的台词风格描述与示例台词
 
 ---
 

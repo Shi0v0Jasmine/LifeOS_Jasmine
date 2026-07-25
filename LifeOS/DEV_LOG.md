@@ -544,7 +544,7 @@ node --check LifeOS/js/sync.js → OK
 
 | 步骤 | 结果 |
 |------|------|
-| 备份文件 | `lifeos-backup-2026-07-09.json`（v2 格式，48KB）：characters 60、habitRecords 12、habits 3、tasks 3、timeline 2、settings 5 |
+| 备份文件 | `LifeOS/data/lifeos-backup-2026-07-09.json`（v2 格式，48KB）：characters 60、habitRecords 12、habits 3、tasks 3、timeline 2、settings 5 |
 | 导入方式 | 线上域名设置页，WebBridge 注入 File 对象调 `ExportImport.importFile(file, 'merge')`；v2 旧记录经 `db.put()` 自动补戳 `updatedAt`/`updatedBy` |
 | 导入后本地核对 | IndexedDB 计数与备份完全一致（settings 9 = 导入 5 + 同步配置 4） |
 | 云端同步配置 | 线上域名：`syncProvider=cloudbase` + envId + `deviceName=Jasmine 的电脑`，`testConnection` ✅ |
