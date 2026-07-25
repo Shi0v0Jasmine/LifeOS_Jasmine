@@ -698,6 +698,18 @@ node --check LifeOS/js/sync.js → OK
 | 部署/校验 | settings.html / js/sync.js / sw.js 单文件部署，curl 校验线上内容均含新代码 ✅ |
 | 已知局限 | CloudBase 用户名密码登录需控制台预先创建用户；Passkey（F-116）本期 Won't；安全规则收紧需用户后续手动执行 |
 
+**发布后测试验证（2026-07-25）**：
+
+| 项目 | 内容 |
+|------|------|
+| 验证方式 | WebBridge 打开线上设置页，截图检查「账号」卡片渲染、CloudBase 后端切换、已登录状态显示 |
+| 发现问题 | SDK 已有账号登录态但 settings `accountUid` 未写入时，UI 未显示「主设备权限」徽标，主设备开关也未联动 |
+| 修复 | `sync.js` `getAccountInfo()` 检测到非匿名账号登录态且 `accountUid` 不一致时自动写入 settings 并刷新配置；`settings.html` 账号卡片「主设备权限」徽标改为基于 `syncForm.accountUid`，主设备开关下方增加账号权限提示 |
+| SW 缓存 | `v20260725-1` → `v20260725-2` |
+| 测试 | sync-merge 29/29 PASS（未新增用例，行为变更已覆盖） |
+| 部署/校验 | sync.js / settings.html / sw.js 重新部署，curl 校验通过 ✅ |
+| ⚠️ 部署工具链坑 | CloudBase CLI 在 Windows 下每次经 `npx -y -p @cloudbase/cli` 运行都会触发 device flow 重新授权；根因是 CLI 的 `xdg-basedir` 在部分代码路径下回退到 `os.tmpdir() + '/.config'`，导致凭据读不到。解决：设置 `XDG_CONFIG_HOME=C:/Users/21136/.config` 后复用已有凭据，部署成功 |
+
 ### 9.7 与既有功能的关系
 
 - 本机 Express 后端（v1.2 `server.js` + `BackendSync`）继续保留作本机备份；云端同步与其并存互不影响

@@ -235,7 +235,7 @@
                                 <div class="form-hint" style="margin-bottom: 4px;">
                                     已登录账号：{{ accountDisplayName }}
                                     <span v-if="accountInfo.isAnonymous" class="badge-main" style="margin-left: 6px;">匿名</span>
-                                    <span v-else-if="syncForm.isMainDevice" class="badge-main" style="margin-left: 6px;">主设备权限</span>
+                                    <span v-else-if="syncForm.accountUid" class="badge-main" style="margin-left: 6px;">主设备权限</span>
                                 </div>
                                 <div class="form-hint">UID：{{ accountInfo.uid }}</div>
                             </div>
@@ -277,6 +277,9 @@
                                 <span class="toggle-desc">冲突且两端修改时间接近（&lt; 2 秒）时，主设备版本获胜（建议只设一台）</span>
                             </div>
                             <div :class="['toggle-switch', syncForm.isMainDevice ? 'on' : '']" @click="toggleMainDevice"></div>
+                        </div>
+                        <div v-if="syncForm.accountUid" class="form-hint" style="margin-top: 8px;">
+                            当前账号已登录，本设备自动获得主设备权限；上方开关仅记录本机设置，不影响账号带来的权限。
                         </div>
 
                         <!-- 云端配置：同步后端选择 -->
@@ -621,7 +624,7 @@
 
                 // ===== 多端同步 =====
                 const SYNC_STORE_LABELS = { tasks: '任务', timeline: '时间轴', habits: '习惯', habitRecords: '习惯打卡', reviews: '复盘', skills: '技能', notes: '笔记', characters: '角色', moments: '时刻' };
-                const syncForm = ref({ deviceName: '', deviceId: '', isMainDevice: false, syncProvider: 'none', supabaseUrl: '', supabaseAnonKey: '', cloudbaseEnvId: '', conflictPolicy: 'lww' });
+                const syncForm = ref({ deviceName: '', deviceId: '', isMainDevice: false, syncProvider: 'none', supabaseUrl: '', supabaseAnonKey: '', cloudbaseEnvId: '', conflictPolicy: 'lww', accountUid: '' });
                 const syncTesting = ref(false);
                 const syncTestResult = ref({ type: '', message: '' });
                 const syncing = ref(false);
@@ -663,7 +666,8 @@
                         supabaseUrl: await LifeOS.Settings.get('supabaseUrl', ''),
                         supabaseAnonKey: await LifeOS.Settings.get('supabaseAnonKey', ''),
                         cloudbaseEnvId: await LifeOS.Settings.get('cloudbaseEnvId', ''),
-                        conflictPolicy: await LifeOS.Settings.get('conflictPolicy', 'lww')
+                        conflictPolicy: await LifeOS.Settings.get('conflictPolicy', 'lww'),
+                        accountUid: await LifeOS.Settings.get('accountUid', '') || ''
                     };
                     // lastSyncAt 按 provider 分键存储（supabase 兼容旧版 lastSyncAt）
                     lastSyncAt.value = await LifeOS.Settings.get('lastSyncAt_' + provider, '')

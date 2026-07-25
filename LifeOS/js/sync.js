@@ -953,7 +953,15 @@
             if (!adapter || !adapter.getCurrentUser) return null;
             const user = await adapter.getCurrentUser();
             if (!user) return null;
-            return { uid: user.uid, isAnonymous: user.isAnonymous, storedUid: cfg.accountUid };
+            // 若 SDK 已有账号登录态但 settings 未记录 accountUid，自动同步（F-114）
+            if (!user.isAnonymous && user.uid && user.uid !== cfg.accountUid) {
+                try {
+                    await window.LifeOS.Settings.set('accountUid', user.uid);
+                    await this._loadConfig();
+                } catch (e) { /* 静默 */ }
+            }
+            const latestCfg = this._config || await this._loadConfig();
+            return { uid: user.uid, isAnonymous: user.isAnonymous, storedUid: latestCfg.accountUid };
         },
 
         // 暴露给单元测试与调试
