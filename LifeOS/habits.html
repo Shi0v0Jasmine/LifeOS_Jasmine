@@ -118,6 +118,19 @@
         .habit-streak { display: flex; align-items: center; gap: 4px; }
         .habit-streak.fire { color: var(--color-urgent); }
 
+        /* 计划进度与暂停徽标（F-117~F-119） */
+        .plan-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; background: var(--color-water-light); color: var(--color-water-deep); }
+        .plan-chip.finished { background: var(--color-mint-light); color: var(--color-mint-deep); }
+        .plan-chip.failed { background: rgba(239, 68, 68, 0.12); color: var(--color-urgent); }
+        .pause-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: var(--color-gold-deep); }
+        .habit-card.paused { opacity: 0.65; }
+        .habit-check-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+        .habit-check-btn:disabled:hover { border-color: var(--border-light); transform: none; }
+        .plan-form-row { display: flex; gap: 8px; }
+        .plan-form-row .form-input { flex: 1; }
+        .form-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+        .form-error { font-size: 0.75rem; color: var(--color-urgent); margin-top: 4px; }
+
         .habit-check-btn {
             width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--border-light); background: white;
             cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
@@ -139,7 +152,7 @@
 
         /* 弹窗 */
         .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-        .modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 24px; width: 90%; max-width: 420px; box-shadow: var(--shadow-lg); }
+        .modal { background: var(--bg-card); backdrop-filter: blur(20px); border-radius: var(--radius-xl); border: 1px solid var(--border-card); padding: 24px; width: 90%; max-width: 420px; box-shadow: var(--shadow-lg); max-height: calc(100dvh - 40px); overflow-y: auto; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .modal-title { font-size: 1.25rem; font-weight: 600; }
         .modal-close { background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-muted); padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: background 0.2s; }
@@ -275,7 +288,7 @@
                         <div class="icon">🌱</div>
                         <p>还没有习惯哦，添加第一个吧！</p>
                     </div>
-                    <div v-for="habit in habitsWithStreak" :key="habit.id" :class="['habit-card', { 'completed': habit.dayCompleted }]">
+                    <div v-for="habit in habitsWithStreak" :key="habit.id" :class="['habit-card', { 'completed': habit.dayCompleted, 'paused': habit.pausedToday }]">
                         <div class="habit-color" :style="{ background: habit.color }"></div>
                         <div class="habit-icon">{{ habit.icon }}</div>
                         <div class="habit-info">
@@ -286,12 +299,20 @@
                                     <span>{{ habit.streak }} 天连续</span>
                                 </span>
                                 <span>{{ habit.category }}</span>
+                                <span v-if="habit.planProgress" class="plan-chip" :class="habit.planProgress.status">
+                                    {{ planProgressText(habit.planProgress) }}
+                                </span>
+                                <span v-if="habit.pausedToday" class="pause-badge" :title="habit.pausedToday.reason">
+                                    ⏸ {{ habit.pausedToday.reason }}
+                                </span>
                             </div>
                         </div>
-                        <button class="habit-check-btn" :class="{ 'checked': habit.dayCompleted }" @click.stop="toggleHabit(habit)">
+                        <button class="habit-check-btn" :class="{ 'checked': habit.dayCompleted }" :disabled="!!habit.pausedToday" @click.stop="toggleHabit(habit)">
                             {{ habit.dayCompleted ? '✓' : '' }}
                         </button>
                         <div class="habit-actions" @click.stop>
+                            <button v-if="!habit.pausedToday" class="action-icon" @click="openPause(habit)" title="暂停">⏸</button>
+                            <button v-else class="action-icon" @click="resumeHabit(habit)" title="恢复">▶</button>
                             <button class="action-icon" @click="openEdit(habit)" title="编辑">✏️</button>
                             <button class="action-icon" @click="deleteHabit(habit)" title="删除">🗑️</button>
                         </div>
@@ -325,10 +346,62 @@
                         <div v-for="c in colorOptions" :key="c" :class="['color-option', { 'selected': habitForm.color === c }]" :style="{ background: c }" @click="habitForm.color = c"></div>
                     </div>
                 </div>
+                <!-- 习惯计划（F-117 周期型 / F-118 限时型） -->
+                <div class="form-group">
+                    <label class="form-label">计划（可选）</label>
+                    <select class="form-input" v-model="habitForm.planType">
+                        <option value="">无计划（每天打卡）</option>
+                        <option value="weekly">周期型：每周 N 次</option>
+                        <option value="monthly">周期型：每月 N 次</option>
+                        <option value="limited">限时型：30 天内完成 N 次</option>
+                    </select>
+                </div>
+                <template v-if="habitForm.planType">
+                    <div class="form-group">
+                        <label class="form-label">{{ habitForm.planType === 'weekly' ? '每周次数' : habitForm.planType === 'monthly' ? '每月次数' : '目标次数' }}</label>
+                        <input class="form-input" type="number" min="1" v-model.number="habitForm.planTimes" placeholder="例如：3">
+                    </div>
+                    <div class="form-group" v-if="habitForm.planType !== 'limited'">
+                        <label class="form-label">停止日（可选，到达后计划自动结束）</label>
+                        <input class="form-input" type="date" v-model="habitForm.planStopDate">
+                    </div>
+                    <div class="form-group" v-else>
+                        <label class="form-label">截止日期（最长从今天开始 30 天）</label>
+                        <input class="form-input" type="date" v-model="habitForm.planEndDate" :min="realToday" :max="limitedMaxDate">
+                        <div v-if="planEndDateError" class="form-error">{{ planEndDateError }}</div>
+                    </div>
+                </template>
                 <div class="modal-actions">
                     <button v-if="editingHabit.id" class="btn btn-danger" @click="confirmDelete">删除</button>
                     <button class="btn btn-secondary" @click="closeModal">取消</button>
                     <button class="btn btn-primary" @click="saveHabit">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 暂停习惯弹窗（F-119） -->
+        <div v-if="showPauseModal" class="modal-overlay" @click.self="closePause">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">暂停「{{ pausingHabit.name }}」</div>
+                    <button class="modal-close" @click="closePause">×</button>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">暂停原因（必填）</label>
+                    <input class="form-input" v-model="pauseForm.reason" placeholder="例如：伤病、生理期、旅行...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">暂停时段（可选，不填则无限期，需手动恢复）</label>
+                    <div class="plan-form-row">
+                        <input class="form-input" type="date" v-model="pauseForm.startDate" :min="realToday">
+                        <input class="form-input" type="date" v-model="pauseForm.endDate" :min="pauseForm.startDate">
+                    </div>
+                    <div class="form-hint">暂停期间打卡入口置灰，且不计入完成率与连续天数</div>
+                    <div v-if="pauseFormError" class="form-error">{{ pauseFormError }}</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @click="closePause">取消</button>
+                    <button class="btn btn-primary" @click="savePause">暂停</button>
                 </div>
             </div>
         </div>
@@ -415,8 +488,14 @@
                 // 弹窗状态
                 const showModal = ref(false);
                 const editingHabit = ref({});
-                const habitForm = ref({ name: '', icon: '✅', category: '', color: '#34D399' });
+                const emptyHabitForm = () => ({ name: '', icon: '✅', category: '', color: '#34D399', planType: '', planTimes: null, planStopDate: '', planEndDate: '' });
+                const habitForm = ref(emptyHabitForm());
                 const showEncourage = ref(false);
+                // 暂停弹窗（F-119）
+                const showPauseModal = ref(false);
+                const pausingHabit = ref({});
+                const pauseForm = ref({ reason: '', startDate: '', endDate: '' });
+                const pauseFormError = ref('');
                 const encourageChar = ref({});
                 const encourageMessage = ref('');
                 const encourageStreak = ref(0);
@@ -458,17 +537,18 @@
                     currentMonth.value = d.getMonth();
                 };
 
-                // 计算该日完成率
+                // 计算该日完成率（分母剔除暂停中的习惯，F-119）
                 const dayRate = computed(() => {
-                    if (!habits.value.length) return 0;
-                    const completed = habits.value.filter(h => isCompletedOnDate(h.id, currentDate.value)).length;
-                    return Math.round((completed / habits.value.length) * 100);
+                    const active = LifeOS.HabitPlan.activeHabitsOn(habits.value, currentDate.value);
+                    if (!active.length) return 0;
+                    const completed = active.filter(h => isCompletedOnDate(h.id, currentDate.value)).length;
+                    return Math.round((completed / active.length) * 100);
                 });
 
                 // 最长连续（基于真实今天）
                 const maxStreak = computed(() => {
                     if (!habits.value.length) return 0;
-                    return Math.max(...habits.value.map(h => getStreakSync(h.id)), 0);
+                    return Math.max(...habits.value.map(h => getStreakSync(h)), 0);
                 });
 
                 // 总打卡数
@@ -476,12 +556,14 @@
                     return records.value.filter(r => r.completed).length;
                 });
 
-                // 习惯列表（带连续天数和当前日期状态）
+                // 习惯列表（带连续天数、当日暂停状态、计划进度）
                 const habitsWithStreak = computed(() => {
                     return habits.value.map(h => ({
                         ...h,
-                        streak: getStreakSync(h.id),
-                        dayCompleted: isCompletedOnDate(h.id, currentDate.value)
+                        streak: getStreakSync(h),
+                        dayCompleted: isCompletedOnDate(h.id, currentDate.value),
+                        pausedToday: LifeOS.HabitPlan.activePause(h, currentDate.value),
+                        planProgress: LifeOS.HabitPlan.getPlanProgress(h, records.value, realToday.value)
                     }));
                 });
 
@@ -490,17 +572,22 @@
                     return records.value.some(r => r.habitId === habitId && r.date === date && r.completed);
                 };
 
-                // 计算连续天数（基于真实今天）
-                const getStreakSync = (habitId) => {
-                    const habitRecords = records.value.filter(r => r.habitId === habitId && r.completed).sort((a, b) => b.date.localeCompare(a.date));
-                    if (!habitRecords.length) return 0;
-                    let streak = 0;
-                    let checkDate = habitRecords[0].date === realToday.value ? realToday.value : LifeOS.Utils.formatDate(new Date(Date.now() - 86400000));
-                    for (const r of habitRecords) {
-                        if (r.date === checkDate) { streak++; checkDate = LifeOS.Utils.formatDate(new Date(new Date(checkDate).getTime() - 86400000)); }
-                        else { break; }
+                // 计算连续天数（基于真实今天，暂停日跳过，F-119）
+                const getStreakSync = (habit) => {
+                    return LifeOS.HabitPlan.calcStreak(habit, records.value, realToday.value);
+                };
+
+                // 计划进度文案（F-117/F-118）
+                const planProgressText = (p) => {
+                    if (p.status === 'failed') return `未达成 ${p.done}/${p.target}`;
+                    const period = p.type === 'weekly' ? '本周' : p.type === 'monthly' ? '本月' : '限时';
+                    let text = `${period} ${p.done}/${p.target}`;
+                    if (p.status === 'finished') text += ' · 已结束';
+                    else if (p.type === 'limited') {
+                        const remain = LifeOS.Utils.daysBetween(realToday.value, p.periodEnd);
+                        text += ` · 剩 ${Math.max(remain, 0)} 天`;
                     }
-                    return streak;
+                    return text;
                 };
 
                 // 生成月历数据
@@ -516,7 +603,7 @@
                         const dateStr = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                         const dayRecords = records.value.filter(r => r.date === dateStr && r.completed);
                         const completedCount = dayRecords.length;
-                        const totalHabits = habits.value.length;
+                        const totalHabits = LifeOS.HabitPlan.activeHabitsOn(habits.value, dateStr).length;
                         let level = 0;
                         if (totalHabits > 0) {
                             const ratio = completedCount / totalHabits;
@@ -542,8 +629,9 @@
                 const nextMonth = () => { currentMonth.value++; if (currentMonth.value > 11) { currentMonth.value = 0; currentYear.value++; } };
                 const goTodayMonth = () => { const n = new Date(); currentYear.value = n.getFullYear(); currentMonth.value = n.getMonth(); };
 
-                // 打卡/取消打卡（支持补打卡）
+                // 打卡/取消打卡（支持补打卡；暂停中的习惯不可打卡，F-119）
                 const toggleHabit = async (habit) => {
+                    if (LifeOS.HabitPlan.isPausedOn(habit, currentDate.value)) return;
                     const wasCompleted = isCompletedOnDate(habit.id, currentDate.value);
                     const newStatus = !wasCompleted;
                     await LifeOS.Habit.checkIn(habit.id, currentDate.value, { completed: newStatus });
@@ -551,7 +639,7 @@
 
                     // 只有今天打卡才触发激励
                     if (newStatus && isToday.value) {
-                        const streak = getStreakSync(habit.id);
+                        const streak = getStreakSync(habit);
                         if (streak >= 7 || dayRate.value === 100) {
                             showEncourageDialog(habit, streak, dayRate.value === 100);
                         }
@@ -580,21 +668,86 @@
                 const closeEncourage = () => { showEncourage.value = false; encourageChar.value = {}; };
 
                 // 习惯 CRUD
-                const openCreate = () => { editingHabit.value = {}; habitForm.value = { name: '', icon: '✅', category: '', color: '#34D399' }; showModal.value = true; };
-                const openEdit = (habit) => { editingHabit.value = habit; habitForm.value = { name: habit.name, icon: habit.icon, category: habit.category, color: habit.color }; showModal.value = true; };
+                const openCreate = () => { editingHabit.value = {}; habitForm.value = emptyHabitForm(); showModal.value = true; };
+                const openEdit = (habit) => {
+                    editingHabit.value = habit;
+                    const plan = habit.plan || null;
+                    habitForm.value = {
+                        name: habit.name, icon: habit.icon, category: habit.category, color: habit.color,
+                        planType: plan ? plan.type : '',
+                        planTimes: plan ? plan.times : null,
+                        planStopDate: plan && plan.stopDate ? plan.stopDate : '',
+                        planEndDate: plan && plan.endDate ? plan.endDate : ''
+                    };
+                    showModal.value = true;
+                };
                 const closeModal = () => { showModal.value = false; };
+
+                // 限时窗口上限：今天 + 30 天（F-118）
+                const limitedMaxDate = computed(() => LifeOS.HabitPlan.addDays(realToday.value, 30));
+                const planEndDateError = computed(() => {
+                    if (habitForm.value.planType !== 'limited') return '';
+                    if (!habitForm.value.planEndDate) return '';
+                    const start = (editingHabit.value.plan && editingHabit.value.plan.type === 'limited' && editingHabit.value.plan.startDate) || realToday.value;
+                    if (!LifeOS.HabitPlan.isValidLimitedWindow(start, habitForm.value.planEndDate)) return '限时计划窗口最长 30 天，请调整截止日期';
+                    return '';
+                });
+
+                // 由表单构建 plan 对象；不合法返回 null
+                const buildPlan = () => {
+                    const f = habitForm.value;
+                    if (!f.planType) return null;
+                    if (!f.planTimes || f.planTimes < 1) return undefined; // 次数必填
+                    if (f.planType === 'limited') {
+                        const existing = editingHabit.value.plan;
+                        const startDate = (existing && existing.type === 'limited' && existing.startDate) || realToday.value;
+                        if (!f.planEndDate || !LifeOS.HabitPlan.isValidLimitedWindow(startDate, f.planEndDate)) return undefined;
+                        return { type: 'limited', times: f.planTimes, startDate, endDate: f.planEndDate };
+                    }
+                    return { type: f.planType, times: f.planTimes, startDate: realToday.value, stopDate: f.planStopDate || null };
+                };
+
                 const saveHabit = async () => {
                     if (!habitForm.value.name.trim()) return;
+                    const plan = buildPlan();
+                    if (plan === undefined) { alert('请完整填写计划：次数需 ≥1；限时计划需在 30 天窗口内选择截止日期'); return; }
+                    const { planType, planTimes, planStopDate, planEndDate, ...base } = habitForm.value;
                     if (editingHabit.value.id) {
-                        await LifeOS.Habit.update(editingHabit.value.id, { ...habitForm.value });
+                        await LifeOS.Habit.update(editingHabit.value.id, { ...base, plan });
                     } else {
-                        await LifeOS.Habit.create({ ...habitForm.value });
+                        await LifeOS.Habit.create({ ...base, plan });
                     }
                     await loadData();
                     closeModal();
                 };
                 const deleteHabit = (habit) => { if (confirm(`确定删除习惯「${habit.name}」？所有打卡记录也会消失。`)) { LifeOS.Habit.delete(habit.id).then(loadData); } };
                 const confirmDelete = () => { if (editingHabit.value.id) deleteHabit(editingHabit.value); closeModal(); };
+
+                // 暂停/恢复（F-119）
+                const openPause = (habit) => {
+                    pausingHabit.value = habit;
+                    pauseForm.value = { reason: '', startDate: realToday.value, endDate: '' };
+                    pauseFormError.value = '';
+                    showPauseModal.value = true;
+                };
+                const closePause = () => { showPauseModal.value = false; };
+                const savePause = async () => {
+                    const f = pauseForm.value;
+                    if (!f.reason.trim()) { pauseFormError.value = '请填写暂停原因'; return; }
+                    if (!f.startDate) { pauseFormError.value = '请选择暂停开始日'; return; }
+                    if (f.endDate && f.endDate < f.startDate) { pauseFormError.value = '结束日不能早于开始日'; return; }
+                    await LifeOS.Habit.pause(pausingHabit.value.id, {
+                        reason: f.reason.trim(),
+                        startDate: f.startDate,
+                        endDate: f.endDate || null
+                    });
+                    await loadData();
+                    closePause();
+                };
+                const resumeHabit = async (habit) => {
+                    await LifeOS.Habit.resume(habit.id, realToday.value);
+                    await loadData();
+                };
 
                 onMounted(loadData);
 
@@ -604,9 +757,12 @@
                     currentYear, currentMonth, weekdays, calendarDays,
                     showModal, editingHabit, habitForm, colorOptions,
                     showEncourage, encourageChar, encourageMessage, encourageStreak,
+                    showPauseModal, pausingHabit, pauseForm, pauseFormError,
+                    limitedMaxDate, planEndDateError, planProgressText,
                     changeDate, goTodayDate, onDateInput, selectDate,
                     prevMonth, nextMonth, goTodayMonth,
                     toggleHabit, openCreate, openEdit, closeModal, saveHabit, deleteHabit, confirmDelete,
+                    openPause, closePause, savePause, resumeHabit,
                     closeEncourage
                 };
             }

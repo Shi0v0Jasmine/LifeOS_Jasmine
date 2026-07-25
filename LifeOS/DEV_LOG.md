@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.1.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.2.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-25】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -709,6 +709,21 @@ node --check LifeOS/js/sync.js → OK
 | 测试 | sync-merge 29/29 PASS（未新增用例，行为变更已覆盖） |
 | 部署/校验 | sync.js / settings.html / sw.js 重新部署，curl 校验通过 ✅ |
 | ⚠️ 部署工具链坑 | CloudBase CLI 在 Windows 下每次经 `npx -y -p @cloudbase/cli` 运行都会触发 device flow 重新授权；根因是 CLI 的 `xdg-basedir` 在部分代码路径下回退到 `os.tmpdir() + '/.config'`，导致凭据读不到。解决：设置 `XDG_CONFIG_HOME=C:/Users/21136/.config` 后复用已有凭据，部署成功 |
+
+### 9.22 v5.2.0 习惯周期计划与暂停（F-117~F-119，2026-07-25）
+
+**背景**：PRD §4.1.15（US-029）。习惯需要目标型计划（每周/每月 N 次，可设停止日）、限时型计划（≤30 天窗口凑满 N 次）、以及因伤病等原因暂停且暂停期不拉低完成率。同时为后续打卡度量（F-120）、图片解析（F-121）、数据面板（F-122，PRD 已规划 v5.3）预留接口，减少未来重构。
+
+| 项目 | 内容 |
+|------|------|
+| 数据模型 | habit 新增 `plan`（{type:'weekly'/'monthly'/'limited', times, startDate, stopDate?, endDate?}）与 `pauses`（[{reason, startDate, endDate\|null}] 数组保留历史）；IndexedDB 仍 v3（纯可选字段，无需迁移）；LWW 随 habits 集合自动同步 |
+| `LifeOS.HabitPlan` | core.js 新增纯函数模块（不依赖 db，node 可测）：`weekRange`（自然周 周一~周日，已与用户确认口径）/`monthRange`、`getPlanProgress`（进度+状态 active/finished/failed）、`isValidLimitedWindow`（≤30 天）、`activePause`/`isPausedOn`/`activeHabitsOn`、`calcStreak`（暂停日跳过，今日明确未打卡仍清零，兼容既有语义） |
+| 数据层 | `HabitStore.create` 接受 plan/pauses；`getStreak` 委托 `HabitPlan.calcStreak`；新增 `pause()`/`resume()`（恢复=暂停段 endDate 写为昨天，当天起可打卡）；`checkIn` 改扩展字段透传——F-120 的 metrics、F-121 的图片落库**无需再改 core.js** |
+| UI（habits.html） | 编辑弹窗加「计划」区（类型/次数/停止日/截止日，限时截止日 max=今日+30 且校验）；卡片加计划进度 chip（本周 2/3、限时剩 X 天、未达成）与 ⏸ 暂停徽标；暂停中的习惯打卡按钮置灰；操作区加 ⏸/▶ 按钮；暂停弹窗原因必填+时段选填；完成率与热力图分母剔除当日暂停习惯 |
+| 测试 | 新增 `tests/habit-plan.test.js`（6 项：周期口径/周月进度与停止日/限时窗口与未达成/暂停基础/streak 跳过/数据层集成）；core-data 10、subtask 9、sync-merge 29、ai-planner-parse 5/6（设计预期）全绿 |
+| SW 缓存 | `v20260725-2` → `v20260725-3` |
+| 部署/校验 | core.js / habits.html / sw.js 单文件部署，curl 校验线上含新代码 ✅ |
+| PRD | F-117~119 翻绿（Checklist/MoSCoW/§5.2）；新增 §4.1.16~4.1.18 与 US-030~032、F-120~F-122 规划（v5.3.0） |
 
 ### 9.7 与既有功能的关系
 

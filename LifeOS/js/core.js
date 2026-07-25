@@ -977,6 +977,101 @@
         }
     };
 
+    // ============================================================
+    // 习惯计划与暂停（F-117~F-119）纯函数模块
+    // 不依赖 IndexedDB，records 以参数传入，便于 node 环境单测；
+    // 同时作为后续打卡度量（F-120）与数据面板（F-122）的取数接口。
+    // 日期一律为 YYYY-MM-DD 字符串，直接按字典序比较。
+    // ============================================================
+    const HabitPlan = {
+        addDays(dateStr, n) {
+            const d = new Date(dateStr + 'T00:00:00');
+            d.setDate(d.getDate() + n);
+            return Utils.formatDate(d);
+        },
+        // 自然周（周一~周日）
+        weekRange(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const dow = (d.getDay() + 6) % 7; // 周一=0
+            const start = this.addDays(dateStr, -dow);
+            return { start, end: this.addDays(start, 6) };
+        },
+        // 自然月
+        monthRange(dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            return {
+                start: Utils.formatDate(new Date(d.getFullYear(), d.getMonth(), 1)),
+                end: Utils.formatDate(new Date(d.getFullYear(), d.getMonth() + 1, 0))
+            };
+        },
+
+        // ---- F-119 暂停 ----
+        // 返回覆盖 dateStr 的暂停段（无则 null）；endDate 为 null/缺省表示无限期
+        activePause(habit, dateStr) {
+            return (habit.pauses || []).find(p =>
+                p.startDate <= dateStr && (p.endDate == null || dateStr <= p.endDate)
+            ) || null;
+        },
+        isPausedOn(habit, dateStr) { return !!this.activePause(habit, dateStr); },
+        // 剔除当日暂停的习惯（完成率/热力图分母）
+        activeHabitsOn(habits, dateStr) {
+            return habits.filter(h => !this.isPausedOn(h, dateStr));
+        },
+
+        // ---- F-117 周期型 / F-118 限时型 ----
+        // 计划所在周期窗口：weekly=自然周，monthly=自然月，limited=起止窗口
+        planPeriod(plan, dateStr) {
+            if (!plan || !plan.type) return null;
+            if (plan.type === 'weekly') return this.weekRange(dateStr);
+            if (plan.type === 'monthly') return this.monthRange(dateStr);
+            if (plan.type === 'limited') return { start: plan.startDate, end: plan.endDate };
+            return null;
+        },
+        // 计划进度：{ type, target, done, periodStart, periodEnd, status }
+        // status: 'active' 进行中 | 'finished' 已达标或计划结束 | 'failed' 限時到期未达成
+        getPlanProgress(habit, records, dateStr) {
+            const plan = habit.plan;
+            const period = this.planPeriod(plan, dateStr);
+            if (!period) return null;
+            const done = records.filter(r =>
+                r.habitId === habit.id && r.completed &&
+                r.date >= period.start && r.date <= period.end
+            ).length;
+            let status = 'active';
+            if (done >= plan.times) status = 'finished';
+            else if (plan.type === 'limited' && dateStr > plan.endDate) status = 'failed';
+            else if ((plan.type === 'weekly' || plan.type === 'monthly') && plan.stopDate && dateStr > plan.stopDate) status = 'finished';
+            return { type: plan.type, target: plan.times, done, periodStart: period.start, periodEnd: period.end, status };
+        },
+        planStatus(habit, records, dateStr) {
+            const p = this.getPlanProgress(habit, records, dateStr);
+            return p ? p.status : 'none';
+        },
+        // 限时计划校验：窗口 ≤ 30 天
+        isValidLimitedWindow(startDate, endDate) {
+            return startDate <= endDate && this.addDays(startDate, 30) >= endDate;
+        },
+
+        // 连续打卡天数：暂停日跳过（不断也不增）；今日明确未打卡则清零
+        calcStreak(habit, records, today = Utils.formatDate()) {
+            const mine = records.filter(r => r.habitId === habit.id && r.date <= today);
+            const todayRec = mine.find(r => r.date === today);
+            if (todayRec && !todayRec.completed) return 0;
+            const doneDates = new Set(mine.filter(r => r.completed).map(r => r.date));
+            let streak = 0;
+            let checkDate = doneDates.has(today) ? today : this.addDays(today, -1);
+            while (true) {
+                if (doneDates.has(checkDate)) {
+                    streak++;
+                } else if (!this.isPausedOn(habit, checkDate)) {
+                    break;
+                }
+                checkDate = this.addDays(checkDate, -1);
+            }
+            return streak;
+        }
+    };
+
     const HabitStore = {
         async create(habit) {
             const data = {
@@ -986,6 +1081,8 @@
                 icon: habit.icon || '✅',
                 targetFrequency: habit.targetFrequency || 'daily', // 'daily' | 'weekly' | number
                 color: habit.color || '#34D399',
+                plan: habit.plan || null,     // F-117/F-118：{ type:'weekly'|'monthly'|'limited', times, startDate, stopDate?, endDate? }
+                pauses: habit.pauses || [],   // F-119：[{ reason, startDate, endDate|null }]
                 createdAt: Utils.now(),
                 updatedAt: Utils.now()
             };
@@ -1002,16 +1099,17 @@
         async delete(id) { return db.delete('habits', id); },
         async getAll() { return db.getAll('habits'); },
 
-        // 打卡记录
+        // 打卡记录（扩展字段透传：后续 metrics/attachments 等落库无需改这里）
         async checkIn(habitId, date, record = {}) {
             const id = `${habitId}_${date}`;
             const data = {
+                ...record,
                 id, habitId, date,
                 completed: record.completed !== false,
                 value: record.value || 1, // 完成数量（如喝水 8 杯）
                 note: record.note || '',
                 images: record.images || [],
-                createdAt: Utils.now()
+                createdAt: record.createdAt || Utils.now()
             };
             await db.put('habitRecords', data);
             return data;
@@ -1022,33 +1120,33 @@
         async getRecordsByHabit(habitId) { return db.getByIndex('habitRecords', 'habitId', habitId); },
         async getRecordsByDate(date) { return db.getByIndex('habitRecords', 'date', date); },
 
-        // 计算连续打卡天数
+        // 计算连续打卡天数（暂停日跳过，委托 HabitPlan）
         async getStreak(habitId) {
+            const habit = await db.get('habits', habitId);
+            if (!habit) return 0;
             const records = await this.getRecordsByHabit(habitId);
-            if (!records.length) return 0;
-            let streak = 0;
-            const today = Utils.formatDate();
-            const yesterday = Utils.formatDate(new Date(Date.now() - 86400000));
-            const recordsByDate = new Map(
-                records
-                    .filter(r => r.date <= today)
-                    .sort((a, b) => b.date.localeCompare(a.date))
-                    .map(r => [r.date, r])
-            );
-            const todayRecord = recordsByDate.get(today);
-            if (todayRecord && !todayRecord.completed) return 0;
-            // 如果今天没打卡，从昨天开始算
-            let checkDate = todayRecord && todayRecord.completed ? today : yesterday;
-            while (recordsByDate.has(checkDate)) {
-                const record = recordsByDate.get(checkDate);
-                if (record.completed) {
-                    streak++;
-                    checkDate = Utils.formatDate(new Date(new Date(checkDate).getTime() - 86400000));
-                } else {
-                    break;
-                }
-            }
-            return streak;
+            return HabitPlan.calcStreak(habit, records);
+        },
+
+        // F-119 暂停：原因必填，时段选填（endDate=null 为无限期）
+        async pause(id, { reason, startDate, endDate = null }) {
+            const habit = await db.get('habits', id);
+            if (!habit) return null;
+            const pauses = [...(habit.pauses || []), { reason, startDate, endDate }];
+            return this.update(id, { pauses });
+        },
+        // F-119 恢复：resumeDate 当天起可打卡，暂停段截止于前一天
+        async resume(id, resumeDate) {
+            const habit = await db.get('habits', id);
+            if (!habit) return null;
+            const dayBefore = HabitPlan.addDays(resumeDate, -1);
+            const pauses = (habit.pauses || [])
+                .map(p => {
+                    const active = p.startDate <= resumeDate && (p.endDate == null || p.endDate >= resumeDate);
+                    return active ? { ...p, endDate: dayBefore } : p;
+                })
+                .filter(p => p.endDate == null || p.endDate >= p.startDate);
+            return this.update(id, { pauses });
         }
     };
 
@@ -1841,6 +1939,7 @@
         Timeline: TimelineStore,
         Task: TaskStore,
         Habit: HabitStore,
+        HabitPlan,
         Review: ReviewStore,
         Skill: SkillStore,
         Character: CharacterStore,

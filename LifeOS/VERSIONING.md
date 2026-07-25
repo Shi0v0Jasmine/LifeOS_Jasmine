@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.1.0`
-Latest released version: `5.1.0`（2026-07-25 发布，CloudBase 账号密码登录与主设备权限跟随账号）
+Current source version: `5.2.0`
+Latest released version: `5.2.0`（2026-07-25 发布，习惯周期计划与暂停：周期型/限时型计划 + 原因必填暂停）
 
 版本号格式：
 
@@ -85,6 +85,7 @@ LifeOS 示例：
 | v5.0.2 | — | 2026-07-24 | v3 | 微调：移动端子任务表单纤细化（输入框/按钮/留白整体缩小一号，字号与虚线入口对齐 0.82rem） |
 | v5.0.3 | — | 2026-07-24 | v3 | bug修复：iOS Safari 小字号 date 输入框不渲染占位文字（子任务日期框变白板），改 text/date 聚焦切换模式 |
 | **v5.1.0** | — | **2026-07-25** | **v3** | 小版本：CloudBase 账号密码登录（F-113）+ 主设备权限跟随账号（F-114）；`settings.html` 新增「账号」卡片；`sync.js` 登录态变化后 `reload()` 使 `accountUid`/`isMainDevice` 生效；心跳设备记录写入 `accountUid`；匿名登录保留为降级路径；F-115 安全规则收紧待后续手动迁移 |
+| **v5.2.0** | — | **2026-07-25** | v3 | 小版本：习惯周期计划与暂停（F-117 周期型每周/每月 N 次可选停止日 / F-118 限时型 ≤30 天窗口 / F-119 暂停原因必填+时段选填+暂停期不计完成率）；`core.js` 新增纯函数模块 `HabitPlan`，habit 加 `plan`/`pauses` 字段，`checkIn` 扩展字段透传（为 F-120 度量预留）；`habits.html` 计划表单 + 进度 chip + 暂停徽标/置灰；新增 habit-plan 测试 6 项；PRD 同步新增 F-120~F-122 规划（v5.3） |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
@@ -99,7 +100,7 @@ LifeOS 示例：
 ## 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ 更新本文件（Current source version + 版本历史 + DB 登记）
@@ -118,5 +119,6 @@ LifeOS 示例：
 | ~~v4.0.4~~ | ~~循环副本竞态 + 按钮重设计~~ | ✅ 已发布；冷启动超时、pull 回声 push 顺延 v4.0.5 |
 | v4.0.5 | 冷启动 15s 超时放宽、pull 回声 push 优化 | bug修复 |
 | v4.2.0 | 移动端响应式 M1–M3（底部 Tab Bar、象限 Tab、bottom sheet） | 小版本 |
-| v5.2.0 | 习惯周期计划与暂停（F-117~F-119） | 小版本 |
+| ~~v5.2.0~~ | ~~习惯周期计划与暂停（F-117~F-119）~~ | ✅ 已发布 |
+| v5.3.0 | 习惯度量与数据面板（F-120 打卡成果度量 / F-121 打卡图片 AI 解析 / F-122 习惯数据面板） | 小版本 |
 | v6.0.0 | 新主流程（待规划：如原生壳打包、协作/分享功能） | 大版本 |
