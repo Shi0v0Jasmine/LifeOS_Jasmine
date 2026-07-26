@@ -578,6 +578,9 @@ async function setupSyncWithMock(LifeOS, adapter, { isMainDevice = false } = {})
     await LifeOS.Settings.set('isMainDevice', isMainDevice);
     await LifeOS.Settings.set('syncProvider', 'cloudbase');
     await LifeOS.Settings.set('cloudbaseEnvId', 'env-test');
+    if (isMainDevice) {
+        await LifeOS.Settings.set('accountUid', 'uid-test');
+    }
     LifeOS.Sync._enabled = true;
     LifeOS.Sync._deviceStatusCache = null;
     LifeOS.Sync._ensureAdapter = async () => adapter;
@@ -662,6 +665,7 @@ async function testSetDeviceStatusMasterGuard() {
     );
 
     await LifeOS.Settings.set('isMainDevice', true);
+    await LifeOS.Settings.set('accountUid', 'uid-test');
     await LifeOS.Sync._loadConfig();
 
     await assert.rejects(
@@ -720,7 +724,7 @@ async function testCloudBaseAdapterLoginLogout() {
     assert.strictEqual(afterLogout.isAnonymous, true, '登出后应为匿名用户');
 }
 
-async function testAccountLoginMakesMasterDevice() {
+async function testAccountLoginWritesUidAndMasterRequiresSwitch() {
     const { LifeOS, context } = loadLifeOSWithContext();
     const capture = { sets: [], whereConds: [], queryData: [] };
     context.window.cloudbase = makeCloudBaseMock(capture);
@@ -737,9 +741,15 @@ async function testAccountLoginMakesMasterDevice() {
     assert.strictEqual(result.ok, true, 'accountLogin 应返回 ok');
     assert.strictEqual(await LifeOS.Settings.get('accountUid'), 'uid-jasmine', '登录后应写入 accountUid');
 
+    // 新逻辑：主设备 = 本机开关 && 已登录账号；仅登录不自动变主设备
     const cfg = await LifeOS.Sync._loadConfig();
-    assert.strictEqual(cfg.isMainDevice, true, '登录账号后应自动获得主设备权限');
+    assert.strictEqual(cfg.isMainDevice, false, '仅登录账号不自动获得主设备权限（需本机开关）');
     assert.strictEqual(cfg.accountUid, 'uid-jasmine', '配置中 accountUid 应同步');
+
+    // 打开本机开关后才是主设备
+    await LifeOS.Settings.set('isMainDevice', true);
+    const cfg2 = await LifeOS.Sync._loadConfig();
+    assert.strictEqual(cfg2.isMainDevice, true, '本机开关 && 已登录账号 = 主设备');
 }
 
 async function testAccountLogoutClearsUid() {
@@ -785,6 +795,7 @@ async function testHardDeleteDeviceMasterGuard() {
     );
 
     await LifeOS.Settings.set('isMainDevice', true);
+    await LifeOS.Settings.set('accountUid', 'uid-test');
     await LifeOS.Sync._loadConfig();
 
     await assert.rejects(
@@ -820,6 +831,50 @@ async function testCleanupRevokedDevices() {
     assert.strictEqual(calls.deviceDelete[0], 'dev-old-revoked', '应删除 31 天前的 revoked 设备');
 }
 
+async function testSetMainDeviceGlobalUnique() {
+    const { LifeOS } = loadLifeOSWithContext();
+    const deviceList = [
+        { id: 'dev-self', data: { status: 'active', isMaster: false }, updated_at: '2026-07-25T00:00:00.000Z' },
+        { id: 'dev-other', data: { status: 'active', isMaster: true }, updated_at: '2026-07-25T00:00:00.000Z' }
+    ];
+    const { calls, adapter } = makeDeviceMockAdapter({ status: 'active' }, { deviceList });
+    await setupSyncWithMock(LifeOS, adapter, { isMainDevice: false });
+    await LifeOS.Settings.set('accountUid', 'uid-jasmine');
+    await LifeOS.Sync._loadConfig();
+
+    const result = await LifeOS.Sync.setMainDevice();
+
+    assert.strictEqual(result.ok, true, 'setMainDevice 应返回 ok');
+    assert.strictEqual(await LifeOS.Settings.get('isMainDevice'), true, '本地开关应打开');
+    // 本机 upsert isMaster=true，其他设备 upsert isMaster=false
+    const selfUpsert = calls.deviceUpsert.find(r => r.id === 'dev-self');
+    const otherUpsert = calls.deviceUpsert.find(r => r.id === 'dev-other');
+    assert.ok(selfUpsert, '本机应有 upsert 记录');
+    assert.strictEqual(selfUpsert.data.isMaster, true, '本机 isMaster 应为 true');
+    assert.ok(otherUpsert, '其他设备应有 upsert 记录');
+    assert.strictEqual(otherUpsert.data.isMaster, false, '其他设备 isMaster 应为 false');
+
+    const cfg = await LifeOS.Sync._loadConfig();
+    assert.strictEqual(cfg.isMainDevice, true, '配置中 isMainDevice 应为 true（开关 && 账号）');
+}
+
+async function testHeartbeatDemotesWhenMasterFalse() {
+    const { LifeOS } = loadLifeOSWithContext();
+    // 云端记录：本机 isMaster 已被其他设备置为 false
+    const { calls, adapter } = makeDeviceMockAdapter({ status: 'active', isMaster: false });
+    await setupSyncWithMock(LifeOS, adapter, { isMainDevice: true });
+    await LifeOS.Settings.set('accountUid', 'uid-jasmine');
+    await LifeOS.Sync._loadConfig();
+
+    await LifeOS.Sync._heartbeat();
+
+    assert.strictEqual(await LifeOS.Settings.get('isMainDevice'), false, '被降级后本地开关应自动关闭');
+    const cfg = await LifeOS.Sync._loadConfig();
+    assert.strictEqual(cfg.isMainDevice, false, '配置中 isMainDevice 应为 false');
+    const row = calls.deviceUpsert[0];
+    assert.strictEqual(row.data.isMaster, false, '心跳上报 isMaster 应为 false');
+}
+
 const tests = [
     testRemoteNewerWithoutLocalChangesUsesRemote,
     testLocalNewerKeepsLocal,
@@ -847,11 +902,13 @@ const tests = [
     testSetDeviceStatusMasterGuard,
     testDeviceStatusCacheReuse,
     testCloudBaseAdapterLoginLogout,
-    testAccountLoginMakesMasterDevice,
+    testAccountLoginWritesUidAndMasterRequiresSwitch,
     testAccountLogoutClearsUid,
     testHeartbeatIncludesAccountUid,
     testHardDeleteDeviceMasterGuard,
-    testCleanupRevokedDevices
+    testCleanupRevokedDevices,
+    testSetMainDeviceGlobalUnique,
+    testHeartbeatDemotesWhenMasterFalse
 ];
 
 (async () => {

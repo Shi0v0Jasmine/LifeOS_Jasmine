@@ -106,6 +106,7 @@
         .conflict-version-title { font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
         .conflict-meta { font-size: 0.75rem; color: var(--text-muted); word-break: break-all; }
         .badge-main { padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: var(--color-gold); color: #92690A; font-weight: 600; }
+        .badge-common { padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: var(--color-sky); color: #0369A1; font-weight: 600; }
         .btn-sm { padding: 6px 12px; font-size: 0.75rem; margin-top: 4px; align-self: flex-start; }
         .about-version { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 12px; }
         .about-desc { font-size: 0.875rem; color: var(--text-secondary); line-height: 1.6; max-width: 400px; margin: 0 auto; }
@@ -382,6 +383,7 @@
                                         {{ d.name || (d.deviceId || '').slice(0, 8) || '未命名设备' }}
                                         <span v-if="d.deviceId === syncForm.deviceId" class="badge-main">本机</span>
                                         <span v-if="d.isMaster" class="badge-main">主设备</span>
+                                        <span v-else-if="d.accountUid" class="badge-common">常用设备</span>
                                     </span>
                                     <span class="conflict-summary">{{ deviceStatusLabel(d.status) }}</span>
                                 </div>
@@ -694,8 +696,27 @@
                 };
 
                 const toggleMainDevice = async () => {
-                    syncForm.value.isMainDevice = !syncForm.value.isMainDevice;
+                    if (!syncForm.value.isMainDevice) {
+                        // 打开开关：需要已登录账号，触发全局唯一主设备设置
+                        if (!syncForm.value.accountUid) {
+                            alert('请先登录账号，主设备权限需要账号支持');
+                            return;
+                        }
+                        if (!confirm('确定将本设备设为主设备吗？\n\n其他已登录设备将自动降级为常用设备。')) return;
+                        try {
+                            await LifeOS.Sync.setMainDevice();
+                            syncForm.value.isMainDevice = true;
+                        } catch (err) {
+                            alert('设置失败：' + err.message);
+                            return;
+                        }
+                    } else {
+                        // 关闭开关：仅影响本机，不影响其他设备
+                        syncForm.value.isMainDevice = false;
+                        await LifeOS.Settings.set('isMainDevice', false);
+                    }
                     await saveDeviceInfo();
+                    await loadDeviceList();
                 };
 
                 const saveSyncConfig = async () => {
@@ -933,6 +954,14 @@
                                 : '💤 本设备已被主设备休眠，同步已暂停。'
                         };
                         if (s === 'revoked') loadSyncSettings();
+                    });
+                    window.addEventListener('lifeos:device-demoted', () => {
+                        syncTestResult.value = {
+                            type: 'error',
+                            message: '📉 本设备已被降级为常用设备。如需恢复主设备权限，请重新打开「本设备为主设备」开关。'
+                        };
+                        loadSyncSettings();
+                        loadDeviceList();
                     });
                 });
 

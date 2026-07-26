@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.3.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.3.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-25】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -753,6 +753,22 @@ node --check LifeOS/js/sync.js → OK
 | SW 缓存 | `v20260725-4` → `v20260725-5` |
 | 部署/校验 | core.js / habits.html / sw.js 单文件部署，curl 校验线上含新代码 ✅ |
 | PRD | F-120~122 翻绿（Checklist/MoSCoW/§5.2）；§4.1.16~4.1.18 改「已实现 v5.3.0」 |
+
+### 9.25 v5.3.1 主设备判定改为 AND + 全局唯一主设备自动降级（2026-07-25）
+
+**背景**：用户反馈设备列表中多台设备同时显示「主设备」，权限过于分散。经讨论确认新逻辑：主设备 = 本机开关 && 已登录账号；全局仅一台主设备；其他已登录设备为常用设备；未登录为普通设备。
+
+| 项目 | 内容 |
+|------|------|
+| 判定逻辑 | `sync.js` `_loadConfig()` 中 `isMainDevice` 从 `\|\|` 改为 `&&`：仅当「本机开关打开」且「已登录账号」同时成立时才是主设备 |
+| 全局唯一主设备 | `Sync.setMainDevice()`：设置本机 `isMainDevice = true`，云端本机 `isMaster = true`，同时把其他已登录设备的 `isMaster` 置为 `false`（自动降级） |
+| 自动降级检测 | `Sync._heartbeat()` 每次 sync 时检查云端 `isMaster`：若为 `false` 但本地开关仍打开，则自动关闭本地开关并广播 `lifeos:device-demoted` 事件 |
+| 设备列表 UI | `settings.html` 设备卡片按状态显示徽标：黄色「主设备」（`isMaster`）、蓝色「常用设备」（`accountUid` 非空但非 `isMaster`）、无徽标（未登录）；新增 `.badge-common` 样式 |
+| 主设备开关 | `toggleMainDevice()` 打开时校验已登录账号，弹确认「其他已登录设备将自动降级为常用设备」，调用 `Sync.setMainDevice()`；关闭时仅影响本机 |
+| 降级提示 | 监听 `lifeos:device-demoted`，显示「📉 本设备已被降级为常用设备」并刷新配置与设备列表 |
+| 测试 | `tests/sync-merge.test.js` 适配新逻辑（`setupSyncWithMock` 主设备时自动补 `accountUid`；`testAccountLoginWritesUidAndMasterRequiresSwitch` 替代旧测试；新增 `testSetMainDeviceGlobalUnique` 与 `testHeartbeatDemotesWhenMasterFalse`）；sync-merge **33**/33 PASS，core-data 10、subtask 9、ai-planner-parse 5/6、habit-plan 6、habit-metrics 5 全绿 |
+| SW 缓存 | `v20260725-5` → `v20260725-6` |
+| 部署/校验 | sync.js / settings.html / sw.js 单文件部署，curl 校验线上含 `setMainDevice`、`_notifyDeviceDemoted`、「常用设备」「badge-common」✅ |
 
 ### 9.7 与既有功能的关系
 

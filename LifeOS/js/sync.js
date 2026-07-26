@@ -504,7 +504,7 @@
                 cloudbaseEnvId: (await S.get('cloudbaseEnvId', '') || '').trim(),
                 deviceId: await S.get('deviceId', null),
                 deviceName: await S.get('deviceName', '') || '',
-                isMainDevice: !!(await S.get('isMainDevice', false)) || !!accountUid,
+                isMainDevice: !!(await S.get('isMainDevice', false)) && !!accountUid,
                 accountUid,
                 conflictPolicy: await S.get('conflictPolicy', 'lww'),
                 lastSyncAt
@@ -803,6 +803,16 @@
             const existing = await this._fetchOwnDeviceDoc(true); // 强制刷新，顺带更新状态缓存
             const now = nowIso();
             const prev = existing && existing.data ? existing.data : {};
+
+            // F-114：检测是否被其他设备降级——云端 isMaster=false 但本地开关仍打开
+            if (prev.isMaster === false && cfg.isMainDevice) {
+                console.log('[LifeOS Sync] 本设备已被降级为常用设备');
+                await window.LifeOS.Settings.set('isMainDevice', false);
+                cfg.isMainDevice = false;
+                if (this._config) this._config.isMainDevice = false;
+                this._notifyDeviceDemoted();
+            }
+
             const doc = {
                 deviceId: cfg.deviceId,
                 name: cfg.deviceName || '',
@@ -819,6 +829,14 @@
                 this._deviceStatusCache = { doc: { id: cfg.deviceId, data: doc, updated_at: now }, fetchedAt: Date.now() };
             } catch (err) {
                 console.warn('[LifeOS Sync] 设备心跳失败:', err.message);
+            }
+        },
+
+        _notifyDeviceDemoted() {
+            if (typeof window !== 'undefined' &&
+                typeof window.dispatchEvent === 'function' &&
+                typeof CustomEvent === 'function') {
+                window.dispatchEvent(new CustomEvent('lifeos:device-demoted'));
             }
         },
 
@@ -865,6 +883,55 @@
             if (!adapter || !adapter.deviceDelete) throw new Error('同步后端不可用');
             await adapter.deviceDelete(deviceId);
             return { ok: true, deviceId };
+        },
+
+        /**
+         * F-114 全局唯一主设备：本机设为主设备，其他已登录设备自动降级为常用设备。
+         * 需要已登录账号；本地开关打开 + 云端 isMaster 唯一化。
+         */
+        async setMainDevice() {
+            const cfg = this._config || await this._loadConfig();
+            if (!cfg.accountUid) throw new Error('请先登录账号，主设备权限需要账号支持');
+            const adapter = await this._ensureAdapter();
+            if (!adapter || !adapter.deviceUpsert || !adapter.deviceList) throw new Error('同步后端不可用');
+            const now = nowIso();
+
+            // 本地开关打开
+            await window.LifeOS.Settings.set('isMainDevice', true);
+
+            // 云端本机记录 isMaster = true
+            const existing = await adapter.deviceGet(cfg.deviceId);
+            const prev = existing && existing.data ? existing.data : {};
+            await adapter.deviceUpsert({
+                id: cfg.deviceId,
+                data: Object.assign({}, prev, {
+                    deviceId: cfg.deviceId,
+                    name: cfg.deviceName || prev.name || '',
+                    isMaster: true,
+                    status: prev.status || 'active',
+                    lastSeenAt: now,
+                    accountUid: cfg.accountUid
+                }),
+                updated_at: now
+            });
+
+            // 其他设备 isMaster = false（自动降级）
+            const rows = await adapter.deviceList();
+            for (const row of rows) {
+                if (String(row.id) === String(cfg.deviceId)) continue;
+                const data = row.data || {};
+                if (!data.isMaster) continue;
+                await adapter.deviceUpsert({
+                    id: row.id,
+                    data: Object.assign({}, data, { isMaster: false }),
+                    updated_at: nowIso()
+                });
+            }
+
+            // 刷新配置与缓存
+            await this._loadConfig();
+            this._deviceStatusCache = null;
+            return { ok: true };
         },
 
         /**
