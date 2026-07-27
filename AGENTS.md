@@ -33,7 +33,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── core-data.test.js        ← 数据层回归（10 项）
 │   ├── subtask.test.js          ← 子任务专项（9 项）
 │   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（29 项）
-│   ├── habit-plan.test.js       ← 习惯周期计划与暂停（6 项）
+│   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
 │   ├── habit-metrics.test.js    ← 习惯度量/AI 解析/数据面板聚合（5 项）
 │   └── ai-planner-parse.test.js ← AI 规划解析（5/6 项，纯对象无数组为设计预期）
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
@@ -133,7 +133,7 @@ cd D:/FUN_VibeCoding/LifeOS
 node tests/core-data.test.js      # 数据层回归（10 项）
 node tests/subtask.test.js        # 子任务专项（9 项）
 node tests/sync-merge.test.js     # 同步引擎（29 项）
-node tests/habit-plan.test.js     # 习惯周期计划与暂停（6 项）
+node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
 node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（5/6 项）
 ```
@@ -166,11 +166,11 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.3.0`（2026-07-25 发布）
+- **Current / Latest**：`v5.3.2`（2026-07-26 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260725-5`
+- **SW 缓存版本**：`lifeos-static-v20260726-1`
 
 ---
 

@@ -761,6 +761,7 @@ Jasmine 正在攻读硕士学位，同时在实习工作，且正在学习日语
   - 目标：打卡选填今日成果（自定义字段：数字/时长/文字）；打卡上传截图经 ai-proxy AI 解析自动回填度量（图片只解析不存储）；习惯数据面板（周/月/季/年，bar/point 可点击回跳当日）
   - 实现：`HabitPlan` 增加度量归一（时长秒存储/时:分:秒 展示）、`aggregateRecords` 周/月/季/年聚合、`buildMetricsParsePrompt`/`parseMetricsFromAI`；`habits.html` 习惯表单加成果字段编辑器、有字段的习惯走打卡弹窗（选填+备注+AI 截图解析按钮）、卡片 📊 打开数据面板（CSS 柱状图 + SVG 折线，点击回跳 `habits.html?date=`）；新增 `tests/habit-metrics.test.js`（5 项）
   - 依赖链路：v5.2 预留的 `checkIn` 透传与 `HabitPlan` 取数接口如期承接，core.js 数据层零重构
+  - 补充（v5.3.2）：习惯页 UI 适配——手机端卡片双行布局 + 计划 chip/暂停徽标单行居中；桌面端月历（3) + 指标竖排（1) 整排限宽 1400px；新增「今日打卡进度」「当前连续」指标（桌面 5 卡/手机 3 卡），原「最长连续」正名为当前值、另增历史最佳 `calcLongestStreak`；打卡勾换 SVG 直线勾；操作按钮 emoji 居中修复
 
 ---
 

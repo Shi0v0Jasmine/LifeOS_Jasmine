@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.3.1`
-Latest released version: `5.3.1`（2026-07-25 发布，主设备判定改为 AND + 全局唯一主设备自动降级）
+Current source version: `5.3.2`
+Latest released version: `5.3.2`（2026-07-26 发布，习惯页 UI 适配：手机端卡片双行 + 桌面端月历/指标 3:1 布局）
 
 版本号格式：
 
@@ -89,6 +89,7 @@ LifeOS 示例：
 | v5.2.1 | — | 2026-07-25 | v3 | bug修复/补全：设备管理 UI 按状态显示按钮（active→休眠+删除，sleeping→唤醒+删除，revoked→恢复+彻底删除）；`sync.js` 新增 `hardDeleteDevice()` 与 `_cleanupRevokedDevices()`，主设备每次 sync 自动硬删 30 天前 revoked 设备；PRD F-112 扩展自动清理策略 |
 | **v5.3.0** | — | **2026-07-25** | v3 | 小版本：习惯度量与数据面板（F-120 打卡成果度量自定义字段 / F-121 打卡截图 AI 解析回填、图片只解析不存储 / F-122 周月季年数据面板可点击回跳当日）；`HabitPlan` 增加度量归一、`aggregateRecords` 聚合、AI prompt 与解析；`habits.html` 成果字段编辑器 + 打卡弹窗 + 📊 数据面板 + `?date=` 定位；新增 habit-metrics 测试 5 项 |
 | v5.3.1 | — | 2026-07-25 | v3 | bug修复/逻辑调整：主设备判定从 OR 改为 AND（本机开关 && 已登录账号）；新增 `setMainDevice()` 全局唯一主设备（其他已登录设备自动降级）；`_heartbeat()` 检测被降级并自动关闭本地开关；设备列表区分 主设备/常用设备/普通设备 |
+| v5.3.2 | — | 2026-07-26 | v3 | bug修复/UI 适配：习惯页手机端卡片双行布局 + 徽标单行居中（计划 chip/暂停徽标不再挤断）；桌面端月历+指标 3:1 布局（整排限宽 1400px）；新增「今日打卡进度」「当前连续」指标（桌面 5 卡/手机保持 3 卡），「最长连续」正名为历史最佳（`HabitPlan.calcLongestStreak`）；打卡勾换 SVG 直线勾（跨平台一致）；操作按钮 emoji 居中修复 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

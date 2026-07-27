@@ -1,8 +1,8 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.3.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
-> **最后更新**: 【2026-07-25】
+> **当前版本**: v5.3.2（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **最后更新**: 【2026-07-26】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
 
@@ -769,6 +769,22 @@ node --check LifeOS/js/sync.js → OK
 | 测试 | `tests/sync-merge.test.js` 适配新逻辑（`setupSyncWithMock` 主设备时自动补 `accountUid`；`testAccountLoginWritesUidAndMasterRequiresSwitch` 替代旧测试；新增 `testSetMainDeviceGlobalUnique` 与 `testHeartbeatDemotesWhenMasterFalse`）；sync-merge **33**/33 PASS，core-data 10、subtask 9、ai-planner-parse 5/6、habit-plan 6、habit-metrics 5 全绿 |
 | SW 缓存 | `v20260725-5` → `v20260725-6` |
 | 部署/校验 | sync.js / settings.html / sw.js 单文件部署，curl 校验线上含 `setMainDevice`、`_notifyDeviceDemoted`、「常用设备」「badge-common」✅ |
+
+### 9.26 v5.3.2 习惯页 UI 适配：手机端卡片双行 + 桌面端月历/指标 3:1（2026-07-26）
+
+**背景**：用户反馈——①手机端习惯卡片加入计划 chip（本周 0/2）与暂停徽标（伤病）后版面拥挤、文字被竖排挤断、emoji 与文字脱节；②桌面端月历热力格过大、操作按钮 emoji 在圆内不居中、打卡勾为衬线字体跨平台不一致；③月历居中限宽后周围空白过多。
+
+| 项目 | 内容 |
+|------|------|
+| 手机端卡片双行 | `.habit-card` 移动端改 `flex-wrap`：首行=色条/图标/信息/打卡钮，四个操作按钮下沉第二行右对齐（分隔线）；打卡钮 48→44px，操作钮 32→36px（更大触控热区），禁用移动端 hover 位移 |
+| 徽标排版 | `.habit-meta` 允许换行 + 子项 `white-space: nowrap`；`.plan-chip`/`.pause-badge` 加 `nowrap`+`line-height:1.5`+居中——「本周 0/2」单行居中、「⏸️ 伤病」emoji 不脱节（桌面端同享） |
+| 桌面端 3:1 布局 | 顶部统计条取消，月历（3) + 指标竖排（1) 整排限宽 1400px 左对齐；热力格填满日历卡片不再居中留白；手机端指标 3 列网格置顶、日历在下 |
+| 指标扩展 | 新增「今日打卡进度 done/total」（分母剔除暂停，与完成率同口径）与「当前连续」；原「最长连续」实为当前值，正名后另增真·历史最佳 `HabitPlan.calcLongestStreak`（暂停日跳过不打断）；桌面 5 卡，手机端 `stat-mobile-hide` 仅保留 3 卡 |
+| 按钮细节 | 操作钮/打卡钮加 `line-height:1`；`⏸`→`⏸️`、`▶`→`▶️`（Windows 不再按文本字形渲染偏移）；打卡勾 `✓`（衬线，跨平台字形不一）换内联 SVG 几何直线勾（`stroke: currentColor`，跨平台像素级一致） |
+| 测试 | `tests/habit-plan.test.js` 新增最长连续用例（历史最佳/暂停桥接/空记录/他人记录不计），6 → 7 项；6 套件全绿 |
+| SW 缓存 | `v20260725-6` → `v20260726-1` |
+| 部署/校验 | habits.html / core.js / sw.js 单文件部署，curl 校验线上含 `cal-stats-row`、`calcLongestStreak`、新 SW 版本号 ✅ |
+| 验证方式 | headless Chrome CDP 移动（390px）/桌面（1600px）真机视口渲染截图核验；桌面布局先出 mockup 渲染图经用户确认后实施；测试期拦截 `/api/*` 防止演示数据污染本机 lifeos-db.json |
 
 ### 9.7 与既有功能的关系
 

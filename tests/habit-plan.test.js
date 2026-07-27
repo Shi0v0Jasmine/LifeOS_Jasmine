@@ -293,6 +293,29 @@ function testStreakSkipsPause() {
     console.log('✓ F-119 streak：暂停日跳过（不断也不增）');
 }
 
+function testLongestStreak() {
+    const LifeOS = loadLifeOS();
+    const HP = LifeOS.HabitPlan;
+
+    // 最长连续 ≠ 当前连续：07-20~23 四连后断档，07-25 重打 → 历史最佳 4
+    const habit = { id: 'h1', pauses: [] };
+    const records = [
+        rec('h1', '2026-07-20'), rec('h1', '2026-07-21'), rec('h1', '2026-07-22'), rec('h1', '2026-07-23'),
+        rec('h1', '2026-07-25')
+    ];
+    assert.strictEqual(HP.calcLongestStreak(habit, records), 4, '历史最长连续为 4');
+
+    // 暂停日跳过不打断：22、23 打卡，24 暂停，25 打卡 → 最长 3
+    const paused = { id: 'h1', pauses: [{ reason: '旅行', startDate: '2026-07-24', endDate: '2026-07-24' }] };
+    assert.strictEqual(HP.calcLongestStreak(paused, [rec('h1', '2026-07-22'), rec('h1', '2026-07-23'), rec('h1', '2026-07-25')]), 3, '暂停日桥接连续');
+
+    // 无记录 → 0；其他习惯的记录不计入
+    assert.strictEqual(HP.calcLongestStreak(habit, []), 0, '无记录为 0');
+    assert.strictEqual(HP.calcLongestStreak(habit, [rec('h2', '2026-07-20')]), 0, '其他习惯记录不计入');
+
+    console.log('✓ 最长连续：历史最佳/暂停桥接/空记录');
+}
+
 // ============ 数据层集成（Fake IndexedDB） ============
 
 async function testStoreIntegration() {
@@ -344,8 +367,9 @@ async function testStoreIntegration() {
         testLimitedPlan();
         testPauseBasics();
         testStreakSkipsPause();
+        testLongestStreak();
         await testStoreIntegration();
-        console.log('\n习惯计划与暂停测试全部通过（6 项）✓');
+        console.log('\n习惯计划与暂停测试全部通过（7 项）✓');
     } catch (e) {
         console.error('测试失败:', e);
         process.exit(1);

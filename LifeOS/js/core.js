@@ -1071,6 +1071,20 @@
             return streak;
         },
 
+        // 历史最长连续（暂停日跳过不打断，与 calcStreak 同口径）
+        calcLongestStreak(habit, records) {
+            const doneDates = new Set(records.filter(r => r.habitId === habit.id && r.completed).map(r => r.date));
+            if (!doneDates.size) return 0;
+            const first = [...doneDates].sort()[0];
+            const today = Utils.formatDate();
+            let run = 0, best = 0;
+            for (let d = first; d <= today; d = this.addDays(d, 1)) {
+                if (doneDates.has(d)) { run++; if (run > best) best = run; }
+                else if (!this.isPausedOn(habit, d)) { run = 0; }
+            }
+            return best;
+        },
+
         // ---- F-120 打卡成果度量 ----
         // 时长解析："H:MM:SS" / "M:SS" / 纯数字(秒)，支持中文单位（时/分/秒）；非法返回 null
         parseDuration(str) {

@@ -51,7 +51,8 @@
         .habits-container { display: flex; flex-direction: column; gap: 24px; }
 
         /* 统计卡片 */
-        .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .cal-stats-row { display: flex; flex-direction: column; gap: 24px; }
+        .stats-col { order: -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
         .stat-card {
             background: var(--bg-card); backdrop-filter: blur(12px); border-radius: var(--radius-lg);
             border: 1px solid var(--border-card); padding: 20px; text-align: center;
@@ -95,6 +96,16 @@
         /* 星期标签 */
         .weekday-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; text-align: center; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-sans); }
 
+        /* 桌面端：月历左（3）+ 指标竖排右（1），整排限宽左对齐，格子随列宽自适应 */
+        @media (min-width: 769px) {
+            .cal-stats-row { flex-direction: row; align-items: stretch; max-width: 1400px; }
+            .cal-stats-row .calendar-section { flex: 3 1 0; min-width: 0; }
+            .stats-col { order: 0; flex: 1 1 0; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+            .stats-col .stat-card { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+            .heatmap-day { font-size: 0.8rem; }
+            .day-dot { width: 5px; height: 5px; }
+        }
+
         /* 习惯列表 */
         .habits-section { display: flex; flex-direction: column; gap: 12px; }
         .section-header { display: flex; justify-content: space-between; align-items: center; }
@@ -114,15 +125,16 @@
         .habit-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; background: var(--bg-hover); flex-shrink: 0; }
         .habit-info { flex: 1; min-width: 0; }
         .habit-name { font-weight: 600; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .habit-meta { display: flex; gap: 12px; margin-top: 4px; font-size: 0.75rem; color: var(--text-secondary); }
+        .habit-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 4px; font-size: 0.75rem; color: var(--text-secondary); }
+        .habit-meta > span { white-space: nowrap; }
         .habit-streak { display: flex; align-items: center; gap: 4px; }
         .habit-streak.fire { color: var(--color-urgent); }
 
         /* 计划进度与暂停徽标（F-117~F-119） */
-        .plan-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; background: var(--color-water-light); color: var(--color-water-deep); }
+        .plan-chip { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; line-height: 1.5; white-space: nowrap; background: var(--color-water-light); color: var(--color-water-deep); }
         .plan-chip.finished { background: var(--color-mint-light); color: var(--color-mint-deep); }
         .plan-chip.failed { background: rgba(239, 68, 68, 0.12); color: var(--color-urgent); }
-        .pause-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; background: rgba(245, 158, 11, 0.15); color: var(--color-gold-deep); }
+        .pause-badge { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; line-height: 1.5; white-space: nowrap; background: rgba(245, 158, 11, 0.15); color: var(--color-gold-deep); }
         .habit-card.paused { opacity: 0.65; }
         .habit-check-btn:disabled { cursor: not-allowed; opacity: 0.4; }
         .habit-check-btn:disabled:hover { border-color: var(--border-light); transform: none; }
@@ -173,7 +185,7 @@
 
         .habit-check-btn {
             width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--border-light); background: white;
-            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; line-height: 1;
             transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0;
         }
         .habit-check-btn:hover { border-color: var(--color-mint); transform: scale(1.1); }
@@ -182,7 +194,7 @@
 
         .habit-actions { display: flex; gap: 8px; opacity: 0; transition: opacity 0.2s; }
         .habit-card:hover .habit-actions { opacity: 1; }
-        .action-icon { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; transition: background 0.2s; }
+        .action-icon { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-light); background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; line-height: 1; transition: background 0.2s; }
         .action-icon:hover { background: var(--bg-hover); }
 
         /* 空状态 */
@@ -237,11 +249,24 @@
         .day-detail-habit .status.miss { background: rgba(241,245,249,0.8); color: var(--text-muted); }
 
         @media (max-width: 768px) {
-            .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+            .stats-col { gap: 8px; }
+            .stat-mobile-hide { display: none; }
             .stat-card { padding: 12px; }
             .stat-value { font-size: 1.5rem; }
-            .habit-card { padding: 12px; gap: 12px; }
-            .habit-actions { opacity: 1; }
+            /* 习惯卡片：双行布局 —— 首行=色条/图标/信息/打卡钮，次行=操作按钮 */
+            .habit-card { padding: 12px; gap: 10px; flex-wrap: wrap; }
+            .habit-card:hover { transform: none; }
+            .habit-color { height: 40px; }
+            .habit-icon { width: 36px; height: 36px; font-size: 1.1rem; }
+            .habit-name { font-size: 0.9375rem; }
+            .habit-meta { gap: 4px 8px; }
+            .habit-check-btn { width: 44px; height: 44px; font-size: 1.3rem; }
+            .habit-check-btn:hover { transform: none; }
+            .habit-actions {
+                opacity: 1; flex-basis: 100%; justify-content: flex-end;
+                gap: 10px; padding-top: 8px; border-top: 1px solid var(--border-light);
+            }
+            .action-icon { width: 36px; height: 36px; font-size: 1rem; }
         }
     </style>
 </head>
@@ -266,53 +291,64 @@
                     <span :class="['date-badge', { 'past': !isToday }]">{{ isToday ? '今天' : '补打卡' }}</span>
                 </div>
 
-                <!-- 统计卡片 -->
-                <div class="stats-row">
-                    <div class="stat-card">
-                        <div class="stat-value">{{ dayRate }}%</div>
-                        <div class="stat-label">{{ isToday ? '今日完成' : '该日完成' }}</div>
-                    </div>
-                    <div class="stat-card fire">
-                        <div class="stat-value">{{ maxStreak }}</div>
-                        <div class="stat-label">最长连续</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">{{ totalCheckIns }}</div>
-                        <div class="stat-label">总打卡数</div>
-                    </div>
-                </div>
-
-                <!-- 多邻国风格月历热力图 -->
-                <div class="calendar-section">
-                    <div class="calendar-header">
-                        <div class="calendar-title">{{ currentYear }}年{{ currentMonth + 1 }}月</div>
-                        <div class="calendar-nav">
-                            <button @click="prevMonth">‹</button>
-                            <button @click="goTodayMonth">今</button>
-                            <button @click="nextMonth">›</button>
-                        </div>
-                    </div>
-                    <div class="weekday-labels">
-                        <span v-for="d in weekdays" :key="d">{{ d }}</span>
-                    </div>
-                    <div class="heatmap-grid">
-                        <div v-for="(day, idx) in calendarDays" :key="idx"
-                             :class="['heatmap-day', day.type, 'level-' + day.level, { 'today': day.isRealToday, 'selected': day.date === currentDate }]"
-                             @click="day.date && selectDate(day.date)">
-                            <span v-if="day.day" class="day-number">{{ day.day }}</span>
-                            <div v-if="day.dots" class="day-dots">
-                                <span v-for="(dot, i) in day.dots" :key="i" class="day-dot" :style="{ background: dot }"></span>
+                <!-- 月历热力图 + 右侧竖排指标（桌面 3:1 整排限宽；手机端指标在上） -->
+                <div class="cal-stats-row">
+                    <!-- 多邻国风格月历热力图 -->
+                    <div class="calendar-section">
+                        <div class="calendar-header">
+                            <div class="calendar-title">{{ currentYear }}年{{ currentMonth + 1 }}月</div>
+                            <div class="calendar-nav">
+                                <button @click="prevMonth">‹</button>
+                                <button @click="goTodayMonth">今</button>
+                                <button @click="nextMonth">›</button>
                             </div>
                         </div>
+                        <div class="weekday-labels">
+                            <span v-for="d in weekdays" :key="d">{{ d }}</span>
+                        </div>
+                        <div class="heatmap-grid">
+                            <div v-for="(day, idx) in calendarDays" :key="idx"
+                                 :class="['heatmap-day', day.type, 'level-' + day.level, { 'today': day.isRealToday, 'selected': day.date === currentDate }]"
+                                 @click="day.date && selectDate(day.date)">
+                                <span v-if="day.day" class="day-number">{{ day.day }}</span>
+                                <div v-if="day.dots" class="day-dots">
+                                    <span v-for="(dot, i) in day.dots" :key="i" class="day-dot" :style="{ background: dot }"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="heatmap-legend">
+                            <span>少</span>
+                            <span class="legend-box" style="background: rgba(241,245,249,0.8);"></span>
+                            <span class="legend-box" style="background: var(--color-mint-light);"></span>
+                            <span class="legend-box" style="background: var(--color-mint);"></span>
+                            <span class="legend-box" style="background: var(--color-mint-deep);"></span>
+                            <span class="legend-box" style="background: var(--color-slytherin-green);"></span>
+                            <span>多</span>
+                        </div>
                     </div>
-                    <div class="heatmap-legend">
-                        <span>少</span>
-                        <span class="legend-box" style="background: rgba(241,245,249,0.8);"></span>
-                        <span class="legend-box" style="background: var(--color-mint-light);"></span>
-                        <span class="legend-box" style="background: var(--color-mint);"></span>
-                        <span class="legend-box" style="background: var(--color-mint-deep);"></span>
-                        <span class="legend-box" style="background: var(--color-slytherin-green);"></span>
-                        <span>多</span>
+
+                    <!-- 统计卡片（竖排） -->
+                    <div class="stats-col">
+                        <div class="stat-card">
+                            <div class="stat-value">{{ dayRate }}%</div>
+                            <div class="stat-label">{{ isToday ? '今日完成' : '该日完成' }}</div>
+                        </div>
+                        <div class="stat-card stat-mobile-hide">
+                            <div class="stat-value">{{ todayProgress.done }}/{{ todayProgress.total }}</div>
+                            <div class="stat-label">{{ isToday ? '今日打卡进度' : '该日打卡进度' }}</div>
+                        </div>
+                        <div class="stat-card stat-mobile-hide">
+                            <div class="stat-value">{{ currentStreak }}</div>
+                            <div class="stat-label">当前连续</div>
+                        </div>
+                        <div class="stat-card fire">
+                            <div class="stat-value">{{ longestStreak }}</div>
+                            <div class="stat-label">最长连续</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">{{ totalCheckIns }}</div>
+                            <div class="stat-label">总打卡数</div>
+                        </div>
                     </div>
                 </div>
 
@@ -343,17 +379,17 @@
                                     {{ planProgressText(habit.planProgress) }}
                                 </span>
                                 <span v-if="habit.pausedToday" class="pause-badge" :title="habit.pausedToday.reason">
-                                    ⏸ {{ habit.pausedToday.reason }}
+                                    ⏸️ {{ habit.pausedToday.reason }}
                                 </span>
                             </div>
                         </div>
                         <button class="habit-check-btn" :class="{ 'checked': habit.dayCompleted }" :disabled="!!habit.pausedToday" @click.stop="toggleHabit(habit)">
-                            {{ habit.dayCompleted ? '✓' : '' }}
+                            <svg v-if="habit.dayCompleted" width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4.5 12.5 L10 18 L19.5 6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </button>
                         <div class="habit-actions" @click.stop>
                             <button class="action-icon" @click="openPanel(habit)" title="数据面板">📊</button>
-                            <button v-if="!habit.pausedToday" class="action-icon" @click="openPause(habit)" title="暂停">⏸</button>
-                            <button v-else class="action-icon" @click="resumeHabit(habit)" title="恢复">▶</button>
+                            <button v-if="!habit.pausedToday" class="action-icon" @click="openPause(habit)" title="暂停">⏸️</button>
+                            <button v-else class="action-icon" @click="resumeHabit(habit)" title="恢复">▶️</button>
                             <button class="action-icon" @click="openEdit(habit)" title="编辑">✏️</button>
                             <button class="action-icon" @click="deleteHabit(habit)" title="删除">🗑️</button>
                         </div>
@@ -676,16 +712,28 @@
 
                 // 计算该日完成率（分母剔除暂停中的习惯，F-119）
                 const dayRate = computed(() => {
-                    const active = LifeOS.HabitPlan.activeHabitsOn(habits.value, currentDate.value);
-                    if (!active.length) return 0;
-                    const completed = active.filter(h => isCompletedOnDate(h.id, currentDate.value)).length;
-                    return Math.round((completed / active.length) * 100);
+                    const { done, total } = todayProgress.value;
+                    if (!total) return 0;
+                    return Math.round((done / total) * 100);
                 });
 
-                // 最长连续（基于真实今天）
-                const maxStreak = computed(() => {
+                // 该日打卡进度（已打卡/应打卡，应打卡剔除暂停中的习惯）
+                const todayProgress = computed(() => {
+                    const active = LifeOS.HabitPlan.activeHabitsOn(habits.value, currentDate.value);
+                    const done = active.filter(h => isCompletedOnDate(h.id, currentDate.value)).length;
+                    return { done, total: active.length };
+                });
+
+                // 当前连续（各习惯截至真实今天的连续天数最大值）
+                const currentStreak = computed(() => {
                     if (!habits.value.length) return 0;
                     return Math.max(...habits.value.map(h => getStreakSync(h)), 0);
+                });
+
+                // 最长连续（各习惯历史最佳连续天数最大值，暂停日跳过不打断）
+                const longestStreak = computed(() => {
+                    if (!habits.value.length) return 0;
+                    return Math.max(...habits.value.map(h => LifeOS.HabitPlan.calcLongestStreak(h, records.value)), 0);
                 });
 
                 // 总打卡数
@@ -1027,7 +1075,7 @@
                 });
 
                 return {
-                    habits, habitsWithStreak, dayRate, maxStreak, totalCheckIns,
+                    habits, habitsWithStreak, dayRate, todayProgress, currentStreak, longestStreak, totalCheckIns,
                     currentDate, realToday, isToday, currentDateDisplay, dateInput,
                     currentYear, currentMonth, weekdays, calendarDays,
                     showModal, editingHabit, habitForm, colorOptions,
