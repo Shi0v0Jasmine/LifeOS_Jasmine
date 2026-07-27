@@ -1,7 +1,13 @@
 # LifeOS — 日常跟踪与记录 App
 
 > 一款融合动漫角色激励、四象限任务管理、习惯打卡、每日复盘与学习技能树的个人效率管理工具。
-> 水彩风格 UI + 霍格沃茨 Ravenclaw/Slytherin 配色，离线可用，数据本地存储。
+> 水彩风格 UI + 霍格沃茨 Ravenclaw/Slytherin 配色，本地优先（Local-First），离线可用，CloudBase/Supabase 双后端多端同步。
+
+## 🌐 线上地址（直接用）
+
+**https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com**
+
+手机/电脑浏览器均可访问；手机端可「添加到主屏幕」安装为 PWA。详细用法见 `LifeOS/user-manual.md`（用户手册）。
 
 ---
 
@@ -9,35 +15,35 @@
 
 ```
 D:\FUN_VibeCoding\LifeOS\
-├── LifeOS\                      ← 应用主目录
+├── LifeOS\                      ← 应用主目录（部署到 CloudBase 静态托管）
 │   ├── index.html               ← Dashboard 首页
 │   ├── timeline.html            ← 时间轴管理
-│   ├── tasks.html               ← 任务管理（四象限）
-│   ├── habits.html              ← 习惯打卡
-│   ├── review.html              ← 每日回顾
+│   ├── tasks.html               ← 任务管理（四象限 + 统计视图）
+│   ├── habits.html              ← 习惯打卡（计划/暂停/度量/数据面板）
+│   ├── review.html              ← 每日回顾（情绪月历 + GRAI）
 │   ├── learning.html            ← 学习日记 / 技能树
 │   ├── characters.html          ← 角色库
-│   ├── settings.html            ← 设置（AI 配置 / 数据管理）
+│   ├── settings.html            ← 设置（AI 配置 / 数据管理 / 账号 / 多端同步 / 设备管理）
 │   ├── manifest.webmanifest     ← PWA 安装配置
-│   ├── sw.js                    ← Service Worker 离线缓存
+│   ├── sw.js                    ← Service Worker 离线缓存（发版必升版本号）
+│   ├── user-manual.md           ← 用户手册
 │   ├── css\style.css            ← 全局样式
 │   ├── js\                      ← 核心脚本
-│   │   ├── core.js              ← 数据库 + DAO + 导入导出
-│   │   ├── pwa.js               ← PWA 注册与安装提示状态
-│   │   ├── db.js                ← IndexedDB 封装
-│   │   ├── utils.js             ← 工具函数
-│   │   └── components\          ← Vue 组件
-│   │       └── Sidebar.js       ← 共享侧边栏
-│   ├── data\                    ← 数据目录
-│   │   ├── lifeos-backup-*.json ← 手动备份文件
-│   │   └── lifeos-db.json       ← 本机后端 JSON 数据库（运行后生成，git 忽略）
-│   ├── assets\                  ← 静态资源
-│   └── guide\                   ← 从零构建指南（Step 0-10）
-├── tests\                       ← 数据层回归测试
+│   │   ├── core.js              ← 数据层 DAO + AIClient/AIPlanner + HabitPlan
+│   │   ├── sync.js              ← 多端同步引擎（push/pull/LWW/冲突/设备管理/账号）
+│   │   ├── mobile-nav.js        ← 移动端汉堡菜单 + 底部 Tab Bar 注入
+│   │   ├── pwa.js               ← PWA 注册与安装提示
+│   │   └── components\          ← Vue 组件（Sidebar）
+│   ├── data\                    ← 数据目录（备份/本机 JSON，git 忽略）
+│   ├── assets\                  ← 静态资源（icons/ 含 PWA 图标 lifeos-app.svg）
+│   └── guide\                   ← 从零构建指南（Step 0-10）+ 架构设计文档
+├── tests\                       ← 数据层/同步/习惯回归测试（6 套件）
+├── cloud-functions\ai-proxy\    ← CloudBase 云函数：AI 请求代理（解 CORS）
 ├── server.js                    ← 本机 Express 后端（静态托管 + JSON 持久化 API）
+├── start.bat                    ← Windows 一键启动
 ├── package.json                 ← Node/Express 启动配置
 ├── PRD_LifeOS.md                ← 产品需求文档
-├── LifeOS/data/character_dialogue_styles.json ← 角色台词风格数据
+├── AGENTS.md                    ← AI Agent 项目上下文与约定
 └── README.md                    ← 本文件
 ```
 
@@ -45,44 +51,29 @@ D:\FUN_VibeCoding\LifeOS\
 
 ## 🚀 快速开始
 
-### 1. 打开应用
+### 方式零：直接用线上版（推荐）
 
-**方式一：直接双击打开**
-1. 打开文件资源管理器，导航到 `D:\FUN_VibeCoding\LifeOS\LifeOS\`
-2. 双击 `index.html`，或在浏览器地址栏输入：
-   ```
-   file:///D:/FUN_VibeCoding/LifeOS/LifeOS/index.html
-   ```
+打开 https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com 即可。
 
-**方式二：启动本机后端（推荐，支持 JSON 文件持久化）**
+### 方式一：本机后端（JSON 文件持久化）
 ```bash
 cd D:\FUN_VibeCoding\LifeOS
 node server.js
 # 然后浏览器访问 http://localhost:3000
 ```
+也可以双击 `start.bat`（无 Node.js 时降级为 Python 静态服务器）。
 
-也可以双击 `start.bat`，脚本会优先使用 Node.js 启动后端；如果没有 Node.js，会降级为 Python 静态服务器。
+### 方式二：直接双击打开
+双击 `LifeOS/index.html`（`file://` 协议，功能可用但数据与线上/localhost 互相隔离）。
 
-**方式三：启动静态服务器（无后端持久化）**
-```bash
-cd D:\FUN_VibeCoding\LifeOS\LifeOS
-python -m http.server 8080
-# 然后浏览器访问 http://localhost:8080
-```
+> ⚠️ IndexedDB 按「网址来源」隔离：线上地址 / localhost / file:// 各自独立，请固定一种方式使用。
 
-### 2. 首次使用：导入备份数据
+### 首次使用：导入备份数据
 
-⚠️ **重要**：数据库已从 `OkComputerDB` 迁移至 `LifeOSDB`。旧浏览器数据不会自动迁移，需要从备份恢复。
-
-**步骤：**
 1. 打开 `index.html`（Dashboard）
-2. 点击右上角 **⚙️ 设置**
-3. 或在 Dashboard 首页点击 **「导入数据」** 快速操作按钮
-4. 选择文件：`D:\FUN_VibeCoding\LifeOS\LifeOS\data\lifeos-backup-2026-07-03.json`
-5. 导入策略选择 **「合并」**（保留现有，添加新数据）或 **「覆盖」**（清空后重新写入）
-6. 导入完成后刷新页面
-
-> 💡 如果没有备份，也可以进入 **角色库** 页面，点击 **「导入预置角色」** 按钮，系统会自动加载内置的 50+ 动漫角色数据。
+2. 点击右上角 **⚙️ 设置**，或在 Dashboard 点击 **「导入数据」**
+3. 选择 `LifeOS/data/` 下的备份 JSON，策略选「合并」或「覆盖」
+4. 没有备份也可进 **角色库** → **「导入预置角色」** 加载 50+ 内置角色
 
 ---
 
@@ -90,15 +81,16 @@ python -m http.server 8080
 
 | 模块 | 核心功能 |
 |------|---------|
-| **📊 Dashboard** | 今日概览、完成率、连续打卡、待办任务、学习 XP、情绪天气 |
-| **⏱️ 时间轴** | 预计/实际双列时间轴、任务拖拽排期、计时器自动记录、事件复盘 |
-| **📝 任务** | 四象限分类（自动/手动）、短期/长期任务、倒计时进度条 |
-| **✅ 习惯** | 每日打卡、月历热力图（多邻国风格）、连续天数统计 |
-| **🌙 每日回顾** | DID/GOOD/BAD/THOUGHTS 结构化复盘、情绪天气、GRAI AI 分析 |
+| **📊 Dashboard** | 今日概览、完成率、连续打卡、待办任务、学习 XP、情绪、聚合月历 |
+| **⏱️ 时间轴** | 预计/实际双列、任务拖拽排期、计时器、循环事件、任务完成联动（✓ 删除线） |
+| **📝 任务** | 四象限分类、子任务、AI 拆解、自然语言创建、📊 周/月统计视图 |
+| **✅ 习惯** | 打卡 + 月历热力图、周期/限时计划、暂停（原因必填）、成果度量（数字/时长/文字）、截图 AI 解析（只解析不存图）、周/月/季/年数据面板、习惯详情历史 |
+| **🌙 每日回顾** | DID/GOOD/BAD/THOUGHTS 复盘、情绪 + 原因、情绪月历、GRAI AI 分析 |
 | **🌲 学习日记** | RPG 技能树、XP 经验值、学习笔记、统计面板 |
 | **🎭 角色库** | 50+ 预置角色（排球少年/Fate/EVA/柯南）、激励对话、互动优先级 |
-| **⚙️ 设置** | AI API 配置（Base URL/Key/模型）、通用 AI 客户端测试、数据导入/导出/重置 |
-| **📲 PWA** | manifest + Service Worker，可安装到桌面，并缓存核心静态资源 |
+| **⚙️ 设置** | AI API 配置、数据导入/导出/重置、账号登录、多端同步、设备管理 |
+| **🔄 多端同步** | Local-First 增量 push/pull、LWW 冲突解决、CloudBase（国内）/Supabase（国际）双后端 |
+| **📱 移动端** | 底部 Tab Bar、四象限 Tab、弹窗 bottom sheet、PWA 可安装 |
 
 ### 🎯 激励系统
 
@@ -110,22 +102,20 @@ python -m http.server 8080
 ## 💾 数据安全与备份
 
 ### 存储方式
-- 所有数据存储在浏览器 **IndexedDB**（`LifeOSDB`）中
-- 通过 `node server.js` 启动时，会额外同步到本机 JSON 文件：`LifeOS/data/lifeos-db.json`
-- 后端备份保存在 `LifeOS/data/backups/`，最多保留最近 20 份自动备份
-- 纯本地存储，不上传至外部服务器
-- 存储容量受浏览器限制（约 50MB ~ 数百MB）
+- 所有数据默认存浏览器 **IndexedDB**（`LifeOSDB`），纯本地优先
+- 配置同步后端后，增量同步到 CloudBase（国内默认）或 Supabase
+- `node server.js` 启动时额外同步到本机 JSON：`LifeOS/data/lifeos-db.json`（备份最多保留 20 份）
+- 云端凭据（envId/Supabase key）仅存本地，不进代码仓库
 
 ### 定期备份建议
-1. 进入 Dashboard → 点击 **「导出数据」**
-2. 或进入 **设置** → **数据管理** → **导出全部数据**
-3. 系统会下载一个 `lifeos-backup-YYYY-MM-DD.json` 文件
-4. 建议每周至少备份一次，保存到安全位置
+1. Dashboard → **「导出数据」**，或 设置 → 数据管理 → 导出全部数据
+2. 建议每周至少导出一次 `lifeos-backup-YYYY-MM-DD.json` 存档
+3. 云同步不替代本地备份，导出功能作为最终兜底
 
 ### ⚠️ 数据丢失风险
-- 浏览器清理缓存/历史记录时可能清除 IndexedDB
-- 隐私模式/无痕模式下数据不会被保留
-- 重装系统或更换浏览器后数据不迁移
+- 浏览器清理缓存可能清除 IndexedDB
+- 隐私/无痕模式下数据不保留
+- 换浏览器/清缓存后本地数据不迁移（已配置云同步的可从云端拉回）
 
 ---
 
@@ -133,38 +123,28 @@ python -m http.server 8080
 
 | 技术 | 用途 |
 |------|------|
-| Vue 3 (CDN) | 前端框架 |
+| Vue 3 (CDN) | 前端框架（无构建，IIFE + `window.LifeOS`） |
 | 自定义 CSS | 全局样式与水彩/霍格沃茨主题 |
-| IndexedDB | 本地数据持久化 |
+| IndexedDB | 本地数据持久化（当前 v3） |
+| CloudBase / Supabase | 多端同步双后端 + 静态托管 + ai-proxy 云函数 |
 | Node.js + Express | 可选本机后端，静态托管 + JSON 文件持久化 API |
-| PWA Service Worker | 离线缓存本地页面、核心资源与运行时 CDN Vue |
-| 全局 IIFE (`window.LifeOS`) | 运行入口，兼容 `file://` 协议 |
-
-> 说明：`LifeOS/js/db.js`、`LifeOS/js/utils.js`、`LifeOS/js/components/Sidebar.js` 保留了早期 ES Module 写法，但当前页面实际加载的是 `LifeOS/js/core.js`，各页面内联 Sidebar 组件。
+| PWA Service Worker | 三层缓存（静态/数据/运行时），发版必升版本号 |
 
 ---
 
 ## 📖 开发指南
 
 ### 从零构建
-查看 `LifeOS/guide/` 目录下的 Step-by-Step 构建指南：
-- `step-00-project-setup.md` — 项目初始化
-- `step-01-sidebar-icons-pages.md` — 侧边栏 + 页面骨架
-- `step-02-data-layer.md` — IndexedDB 数据层
-- `step-06-habit-tracker.md` — 习惯打卡
-- `step-07-daily-review.md` — 每日回顾
-- `step-08-learning-diary.md` — 学习日记
-- `step-09-dashboard.md` — Dashboard 首页
-- `step-10-settings.md` — 设置页面
+查看 `LifeOS/guide/` 目录下的 Step-by-Step 构建指南（step-00 ~ step-10），以及 `cloudbase-setup.md`、`multi-device-sync-design.md` 等架构文档。
 
 ### 数据库结构
 ```
-LifeOSDB (IndexedDB)
-├── timeline        ← 时间轴事件
-├── tasks           ← 任务
-├── habits          ← 习惯
-├── habitRecords    ← 习惯打卡记录
-├── reviews         ← 每日回顾
+LifeOSDB (IndexedDB v3)
+├── timeline        ← 时间轴事件（含 taskId 关联、completed 联动标记）
+├── tasks           ← 任务（含子任务、循环副本）
+├── habits          ← 习惯（含 plan/pauses/metrics 字段）
+├── habitRecords    ← 习惯打卡记录（含 metrics 成果值）
+├── reviews         ← 每日回顾（含 emotion/emotionReason）
 ├── skills          ← 学习技能树
 ├── notes           ← 学习笔记
 ├── characters      ← 角色库
@@ -174,39 +154,34 @@ LifeOSDB (IndexedDB)
 
 ### 开发测试
 
-当前没有前端构建流程。后端和测试都使用 Node.js 直接运行：
+无前端构建流程，测试用 Node.js 直接运行：
 
 ```bash
-node tests/core-data.test.js
-node --check server.js
-node --check LifeOS/js/core.js
-node --check LifeOS/js/pwa.js
-node --check LifeOS/sw.js
+node tests/core-data.test.js       # 数据层回归（11 项）
+node tests/subtask.test.js         # 子任务专项（9 项）
+node tests/sync-merge.test.js      # 同步引擎（35 项）
+node tests/habit-plan.test.js      # 习惯计划与暂停（7 项）
+node tests/habit-metrics.test.js   # 习惯度量/AI 解析/数据面板（5 项）
+node tests/ai-planner-parse.test.js  # AI 规划解析（5/6 项，纯对象无数组为设计预期）
 ```
 
-测试覆盖：
-- 循环时间轴事件不应在开始日期之前展开
-- 取消循环后 `isRecurring` 同步更新
-- 习惯 streak 忽略未来记录，并正确处理中断
-- 每日回顾二次保存保留 `createdAt`
-- 循环任务完成/撤回时生成与清理下一日副本
-- 通用 `LifeOS.AIClient` 发送 OpenAI-compatible 请求、记录历史、重试与配置校验
-
-后端 smoke test 建议：
+后端 smoke test：
 
 ```bash
 node server.js
-# 新开终端访问：
-# http://localhost:3000/api/status
+# 新开终端访问 http://localhost:3000/api/status
 ```
 
 ---
 
 ## 🗂️ 相关文件
 
-- `PRD_LifeOS.md` — 完整产品需求文档（功能清单、验收标准、MoSCoW 优先级）
-- `LifeOS/data/character_dialogue_styles.json` — 31 位核心角色的台词风格描述与示例台词
+- `LifeOS/user-manual.md` — 用户手册（网页版地址、账号登录、多端同步、功能速览、FAQ）
+- `PRD_LifeOS.md` — 完整产品需求文档（功能清单、验收标准、MoSCoW 优先级、版本规划）
+- `AGENTS.md` — AI Agent 项目上下文（结构/命令/部署/发版清单）
+- `LifeOS/VERSIONING.md` — 版本管理规则与历史
+- `LifeOS/DEV_LOG.md` — 开发日志
 
 ---
 
-> 版本：v1.2-dev | 作者：Jasmine | 最后更新：【2026-07-09 10:35】
+> 版本：v5.4.0 | 作者：Jasmine | 最后更新：【2026-07-27】

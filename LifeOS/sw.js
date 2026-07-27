@@ -1,6 +1,6 @@
-const STATIC_CACHE = 'lifeos-static-v20260727-1';
-const DATA_CACHE = 'lifeos-data-v20260727-1';
-const RUNTIME_CACHE = 'lifeos-runtime-v20260727-1';
+const STATIC_CACHE = 'lifeos-static-v20260727-2';
+const DATA_CACHE = 'lifeos-data-v20260727-2';
+const RUNTIME_CACHE = 'lifeos-runtime-v20260727-2';
 
 const STATIC_ASSETS = [
     './',
@@ -19,6 +19,9 @@ const STATIC_ASSETS = [
     './js/mobile-nav.js',
     './js/pwa.js',
     './assets/icons/lifeos-app.svg',
+    './assets/icons/lifeos-app-192.png',
+    './assets/icons/lifeos-app-512.png',
+    './assets/icons/apple-touch-icon.png',
     './assets/icons/blue-moon-flower.svg',
     './assets/icons/cat.svg',
     './assets/icons/chalice.svg',

@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.4.0`
-Latest released version: `5.4.0`（2026-07-27 发布，任务/时间轴联动 + 任务统计 + 打卡详情 + 情绪月历 + v4.0.5/v4.2.0 补做）
+Current source version: `5.4.1`
+Latest released version: `5.4.1`（2026-07-27 发布，PWA 图标更换为水彩 LifeOS 手绘 logo + user-manual/README 更新）
 
 版本号格式：
 
@@ -91,6 +91,7 @@ LifeOS 示例：
 | v5.3.1 | — | 2026-07-25 | v3 | bug修复/逻辑调整：主设备判定从 OR 改为 AND（本机开关 && 已登录账号）；新增 `setMainDevice()` 全局唯一主设备（其他已登录设备自动降级）；`_heartbeat()` 检测被降级并自动关闭本地开关；设备列表区分 主设备/常用设备/普通设备 |
 | v5.3.2 | — | 2026-07-26 | v3 | bug修复/UI 适配：习惯页手机端卡片双行布局 + 徽标单行居中（计划 chip/暂停徽标不再挤断）；桌面端月历+指标 3:1 布局（整排限宽 1400px）；新增「今日打卡进度」「当前连续」指标（桌面 5 卡/手机保持 3 卡），「最长连续」正名为历史最佳（`HabitPlan.calcLongestStreak`）；打卡勾换 SVG 直线勾（跨平台一致）；操作按钮 emoji 居中修复 |
 | **v5.4.0** | — | **2026-07-27** | v3 | 小版本：F-027 任务完成↔时间轴联动（事件 completed 字段双向同步）/ F-035 任务统计弹窗（周/月完成数+完成率+四象限分布）/ F-044 习惯详情弹窗（摘要+逐条历史可编辑）/ F-067 情绪月历+原因输入；补做 v4.0.5（冷启动 45s 超时 + pull 回声 push 跳过）与 v4.2.0（移动端底部 Tab Bar + 四象限 Tab + bottom sheet）；PRD 新增 F-123 睡眠打卡规划（v5.5） |
+| v5.4.1 | — | 2026-07-27 | v3 | 资源/文档：PWA 图标换为水彩手绘 LifeOS logo（PNG 192/512 + 圆角透明；apple-touch-icon 180 白底，9 页面加 link；manifest icons 改 PNG 提升 iOS 兼容）；user-manual 更新至 v5.4.0（网页版地址 + AND 主设备 + 功能速览）；README 全面更新至 v5.4.0 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

@@ -169,11 +169,11 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.4.0`（2026-07-27 发布）
+- **Current / Latest**：`v5.4.1`（2026-07-27 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260727-1`
+- **SW 缓存版本**：`lifeos-static-v20260727-2`
 
 ---
 

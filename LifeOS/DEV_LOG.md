@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.4.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.4.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-26】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -802,6 +802,16 @@ node --check LifeOS/js/sync.js → OK
 | 测试 | core-data 11（+F-027）、sync-merge 35（+v4.0.5×2）、subtask 9、ai-planner-parse 5/6、habit-plan 7、habit-metrics 5 全绿；4 个改动页面 script 语法校验通过 |
 | SW 缓存 | `v20260726-1` → `v20260727-1` |
 | 部署/校验 | core.js / sync.js / mobile-nav.js / style.css / tasks.html / timeline.html / review.html / habits.html / sw.js 部署，curl 校验 ✅ |
+
+### 9.28 v5.4.1 PWA 图标更换 + 用户手册/README 更新（2026-07-27）
+
+| 项目 | 内容 |
+|------|------|
+| PWA 图标 | 用户提供水彩手绘 LifeOS logo（1254×1254 PNG，圆角外为黑色像素）；Pillow 处理：圆角 alpha 遮罩（rx 22%，4x 超采样抗锯齿）→ `lifeos-app-512.png`/`lifeos-app-192.png`（透明角），`apple-touch-icon.png`（180×180 白底，iOS 忽略 alpha 防黑角）；manifest.webmanifest icons 由 SVG 改 PNG（iOS 主屏幕只认 PNG）；9 个 HTML 页面 `<head>` 加 `<link rel="apple-touch-icon">`；sw.js 预缓存补 3 个 PNG。用户给的 LifeOS_icon.svg 实为 base64 内嵌位图，未采用 |
+| user-manual | 更新至 v5.4.0：新增「网页版地址」章节（线上 URL + PWA 安装 + origin 隔离提醒）；主设备权限改 AND 判定描述（登录+开关、全局唯一自动降级）；设备管理按状态操作 + revoked 30 天清理；新增 v5.2~v5.4 功能速览；FAQ 补 AI 解析失败/暂停口径 |
+| README | v1.2-dev → v5.4.0 全面更新：线上地址、项目结构（sync.js/mobile-nav.js/cloud-functions）、功能概览、6 测试套件命令、数据模型字段 |
+| SW 缓存 | `v20260727-1` → `v20260727-2` |
+| 部署/校验 | manifest + 3 图标 + 9 页面 + sw.js 部署，curl 校验 200 与新引用 ✅ |
 
 ### 9.7 与既有功能的关系
 
