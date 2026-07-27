@@ -29,6 +29,9 @@
                     </span>
                 </div>
                 <div class="header-actions">
+                    <button class="action-btn" @click="showStatsModal = true">
+                        <span>📊</span> 统计
+                    </button>
                     <button class="action-btn" @click="showFilter = !showFilter">
                         <span>🔖</span> {{ showFilter ? '隐藏筛选' : '显示筛选' }}
                     </button>
@@ -137,10 +140,19 @@
                 </div>
             </section>
 
+            <!-- 移动端象限 Tab（v4.2.0 M2，桌面端隐藏） -->
+            <div class="quadrant-mobile-tabs">
+                <button v-for="t in quadrantTabs" :key="t.key"
+                        :class="['quadrant-mobile-tab', { active: mobileQuadrant === t.key }]"
+                        @click="mobileQuadrant = t.key">
+                    {{ t.icon }} {{ t.count }}
+                </button>
+            </div>
+
             <!-- 四象限布局 -->
             <section class="quadrants-grid">
                 <!-- 第一象限：重要·紧急 -->
-                <div class="quadrant urgent-important">
+                <div class="quadrant urgent-important" v-show="!isMobileView || mobileQuadrant === 'q1'">
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🔴</span>
                         <span class="quadrant-title">重要 · 紧急</span>
@@ -194,7 +206,7 @@
                 </div>
 
                 <!-- 第二象限：重要·不紧急 -->
-                <div class="quadrant important-not-urgent">
+                <div class="quadrant important-not-urgent" v-show="!isMobileView || mobileQuadrant === 'q2'">
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🔵</span>
                         <span class="quadrant-title">重要 · 不紧急</span>
@@ -248,7 +260,7 @@
                 </div>
 
                 <!-- 第三象限：紧急·不重要 -->
-                <div class="quadrant urgent-not-important">
+                <div class="quadrant urgent-not-important" v-show="!isMobileView || mobileQuadrant === 'q3'">
                     <div class="quadrant-header">
                         <span class="quadrant-icon">🟡</span>
                         <span class="quadrant-title">紧急 · 不重要</span>
@@ -302,7 +314,7 @@
                 </div>
 
                 <!-- 第四象限：不重要·不紧急 -->
-                <div class="quadrant not-urgent-not-important">
+                <div class="quadrant not-urgent-not-important" v-show="!isMobileView || mobileQuadrant === 'q4'">
                     <div class="quadrant-header">
                         <span class="quadrant-icon">⚪</span>
                         <span class="quadrant-title">不重要 · 不紧急</span>
@@ -513,6 +525,43 @@
         </div>
 
         <!-- 子任务全部完成确认弹窗 -->
+        <!-- F-035 任务统计视图：周/月图表 -->
+        <div v-if="showStatsModal" class="modal-overlay" @click.self="showStatsModal = false">
+            <div class="modal" style="max-width: 640px;">
+                <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 style="margin:0;">📊 任务统计</h3>
+                    <button class="task-action-btn" @click="showStatsModal = false">✕</button>
+                </div>
+                <div class="stats-tabs">
+                    <button :class="['panel-tab', { active: statsRange === 'week' }]" @click="statsRange = 'week'">本周</button>
+                    <button :class="['panel-tab', { active: statsRange === 'month' }]" @click="statsRange = 'month'">本月</button>
+                </div>
+                <div class="stats-summary">
+                    共 {{ statsSummary.total }} 项 · 完成 {{ statsSummary.done }} 项 · 完成率 {{ statsSummary.rate }}%
+                </div>
+                <div class="panel-section-title">每日完成数</div>
+                <div class="bar-chart">
+                    <div v-for="b in statsBuckets" :key="b.date" class="bar-item" :title="`${b.date}：完成 ${b.done}/${b.total}`">
+                        <div class="bar" :class="{ 'has-data': b.done > 0 }" :style="{ height: statsBarHeight(b.done) }"></div>
+                    </div>
+                </div>
+                <div class="bar-labels"><span v-for="b in statsBuckets" :key="b.date">{{ b.label }}</span></div>
+                <div class="panel-section-title">完成率趋势（%）</div>
+                <svg class="metric-chart" viewBox="0 0 600 120" preserveAspectRatio="none">
+                    <polyline class="line" :points="statsRatePolyline" />
+                    <circle v-for="p in statsRatePoints" :key="p.date" class="point" :cx="p.x" :cy="p.y" r="5">
+                        <title>{{ p.date }}：{{ p.rate }}%</title>
+                    </circle>
+                </svg>
+                <div class="panel-section-title">四象限分布（周期内任务）</div>
+                <div v-for="q in statsQuadrants" :key="q.id" class="quad-dist-row">
+                    <span class="quad-dist-label">{{ q.icon }} {{ q.label }}</span>
+                    <div class="quad-dist-track"><div class="quad-dist-bar" :style="{ width: q.percent + '%', background: q.color }"></div></div>
+                    <span class="quad-dist-count">{{ q.count }}</span>
+                </div>
+            </div>
+        </div>
+
         <div v-if="showSubtaskCompleteConfirm" class="modal-overlay" @click.self="showSubtaskCompleteConfirm = false">
             <div class="modal confirm-modal">
                 <div class="modal-header">
@@ -1133,9 +1182,83 @@
                     return `还剩 ${days} 天`;
                 };
 
+                // ---- v4.2.0 M2：移动端象限 Tab ----
+                const isMobileView = ref(window.innerWidth <= 768);
+                const mobileQuadrant = ref('q1');
+                const quadrantTabs = computed(() => [
+                    { key: 'q1', icon: '🔴', count: q1ParentTasks.value.length },
+                    { key: 'q2', icon: '🔵', count: q2ParentTasks.value.length },
+                    { key: 'q3', icon: '🟡', count: q3ParentTasks.value.length },
+                    { key: 'q4', icon: '⚪', count: q4ParentTasks.value.length }
+                ]);
+
+                // ---- F-035 任务统计视图 ----
+                const showStatsModal = ref(false);
+                const statsRange = ref('week');
+                const parentTasks = computed(() => allTasks.value.filter(t => !t.isSubtask));
+                const statsBuckets = computed(() => {
+                    const fmt = (d) => LifeOS.Utils.formatDate(d);
+                    const today = new Date();
+                    const days = [];
+                    if (statsRange.value === 'week') {
+                        const dow = (today.getDay() + 6) % 7;
+                        const monday = new Date(today); monday.setDate(today.getDate() - dow);
+                        const wd = ['一', '二', '三', '四', '五', '六', '日'];
+                        for (let i = 0; i < 7; i++) {
+                            const d = new Date(monday); d.setDate(monday.getDate() + i);
+                            days.push({ date: fmt(d), label: wd[i] });
+                        }
+                    } else {
+                        const last = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                        for (let i = 1; i <= last; i++) {
+                            days.push({ date: fmt(new Date(today.getFullYear(), today.getMonth(), i)), label: `${i}` });
+                        }
+                    }
+                    return days.map(day => {
+                        const inDay = parentTasks.value.filter(t => t.date === day.date);
+                        const done = inDay.filter(t => t.completed).length;
+                        return { ...day, total: inDay.length, done };
+                    });
+                });
+                const statsSummary = computed(() => {
+                    const total = statsBuckets.value.reduce((s, b) => s + b.total, 0);
+                    const done = statsBuckets.value.reduce((s, b) => s + b.done, 0);
+                    return { total, done, rate: total ? Math.round((done / total) * 100) : 0 };
+                });
+                const statsMaxDone = computed(() => Math.max(...statsBuckets.value.map(b => b.done), 1));
+                const statsBarHeight = (done) => `${Math.max((done / statsMaxDone.value) * 100, 2)}%`;
+                const statsRatePoints = computed(() => {
+                    const buckets = statsBuckets.value;
+                    const stepX = 600 / buckets.length;
+                    return buckets.map((b, i) => ({
+                        date: b.date,
+                        rate: b.total ? Math.round((b.done / b.total) * 100) : 0,
+                        x: Math.round(stepX * (i + 0.5)),
+                        y: Math.round(110 - (b.total ? (b.done / b.total) : 0) * 100)
+                    }));
+                });
+                const statsRatePolyline = computed(() => statsRatePoints.value.map(p => `${p.x},${p.y}`).join(' '));
+                const statsQuadrants = computed(() => {
+                    const first = statsBuckets.value[0];
+                    const last = statsBuckets.value[statsBuckets.value.length - 1];
+                    const inPeriod = parentTasks.value.filter(t => t.date >= (first ? first.date : '') && t.date <= (last ? last.date : ''));
+                    const max = Math.max(inPeriod.length, 1);
+                    return quadrantOptions.map(q => {
+                        const count = inPeriod.filter(t => t.quadrant === q.id).length;
+                        const colors = {
+                            'urgent-important': 'var(--color-urgent)',
+                            'important-not-urgent': 'var(--color-important)',
+                            'urgent-not-important': 'var(--color-warning)',
+                            'not-urgent-not-important': 'var(--text-muted)'
+                        };
+                        return { ...q, count, percent: Math.round((count / max) * 100), color: colors[q.id] };
+                    });
+                });
+
                 onMounted(async () => {
                     await loadTasks();
                     offlineMode.value = await LifeOS.Settings.get('offlineMode', false);
+                    window.addEventListener('resize', () => { isMobileView.value = window.innerWidth <= 768; });
                 });
 
                 return {
@@ -1156,7 +1279,10 @@
                     showSubtaskCompleteConfirm, pendingParentTitle, confirmCompleteParent,
                     getSubtaskProgress,
                     showNLPanel, nlInput, nlGenerateSubtasks, nlLoading, nlError, nlPlan,
-                    generateNLPlan, confirmNLPlan
+                    generateNLPlan, confirmNLPlan,
+                    isMobileView, mobileQuadrant, quadrantTabs,
+                    showStatsModal, statsRange, statsBuckets, statsSummary,
+                    statsBarHeight, statsRatePoints, statsRatePolyline, statsQuadrants
                 };
             }
         }).mount('#app');

@@ -456,6 +456,33 @@ async function testAIClientRequiresConfiguration() {
     );
 }
 
+async function testTaskCompletionSyncsTimelineEvents() {
+    const LifeOS = loadLifeOS();
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+
+    const today = LifeOS.Utils.formatDate();
+    const task = await LifeOS.Task.create({ title: '写报告', date: today, deadline: today, priority: 7 });
+    // 模拟拖拽排期产生的关联事件
+    const evt = await LifeOS.Timeline.create({ title: '写报告', startTime: '09:00', endTime: '10:00', type: 'planned', date: today, taskId: task.id });
+    assert.strictEqual(evt.completed, false, '新事件默认未完成');
+
+    // 任务完成 → 关联事件 completed=true
+    await LifeOS.Task.toggleComplete(task.id);
+    let updated = await LifeOS.Database.get('timeline', evt.id);
+    assert.strictEqual(updated.completed, true, '任务完成后关联事件标记完成');
+
+    // 撤回完成 → 还原
+    await LifeOS.Task.toggleComplete(task.id);
+    updated = await LifeOS.Database.get('timeline', evt.id);
+    assert.strictEqual(updated.completed, false, '撤回完成后关联事件还原');
+
+    // 无关联事件的任务不报错
+    const lone = await LifeOS.Task.create({ title: '无排期任务', date: today, deadline: today, priority: 5 });
+    await LifeOS.Task.toggleComplete(lone.id);
+    assert.strictEqual((await LifeOS.Database.get('tasks', lone.id)).completed, true);
+}
+
 const tests = [
     testRecurringEventsDoNotAppearBeforeStartDate,
     testUpdatingRecurringEventToNonRecurringClearsRecurringFlag,
@@ -463,6 +490,7 @@ const tests = [
     testRecurringInstanceIdIsDeterministic,
     testRecurringTaskUndoRemovesGeneratedNextTask,
     testReviewUpdatePreservesCreatedAt,
+    testTaskCompletionSyncsTimelineEvents,
     testAIClientSendsOpenAICompatibleChatRequest,
     testAIClientRetriesRetryableFailures,
     testAIClientRoutesViaConfiguredProxy,

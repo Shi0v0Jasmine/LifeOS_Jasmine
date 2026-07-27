@@ -581,6 +581,7 @@
                 date: event.date || Utils.formatDate(),
                 category: event.category || '',
                 taskId: event.taskId || null,
+                completed: !!event.completed, // F-027：任务完成状态联动标记
                 images: event.images || [],
                 repeatRule: event.repeatRule || null,      // { type: 'daily'|'weekly'|'monthly', days?: [0-6], dayOfMonth?: 1-31 }
                 repeatEndDate: event.repeatEndDate || null,
@@ -736,6 +737,16 @@
             }
             return targetEvents.length;
         },
+        // F-027：任务完成状态同步到关联时间轴事件（完成/撤回双向）
+        async _syncTimelineCompleted(taskId, completed) {
+            const today = Utils.formatDate();
+            const events = await db.getByIndex('timeline', 'taskId', taskId);
+            const targets = events.filter(e => e.date <= today && !!e.completed !== !!completed);
+            for (const evt of targets) {
+                await db.put('timeline', { ...evt, completed: !!completed, updatedAt: Utils.now() });
+            }
+            return targets.length;
+        },
         async toggleComplete(id) {
             const task = await db.get('tasks', id);
             if (!task) return null;
@@ -745,6 +756,8 @@
             task.completedAt = task.completed ? Utils.now() : null;
             task.updatedAt = Utils.now();
             await db.put('tasks', task);
+            // F-027：联动关联时间轴事件完成态
+            await this._syncTimelineCompleted(id, task.completed);
             // 如果是循环任务且完成，创建明天的副本
             if (task.completed && task.isRecurring && task.recurringRule && !task.isSubtask) {
                 const tomorrow = new Date();

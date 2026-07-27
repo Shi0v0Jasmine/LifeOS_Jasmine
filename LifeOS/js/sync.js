@@ -46,6 +46,7 @@
 
     const TIE_WINDOW_MS = 2000;               // LWW 近似平局窗口（< 2s 主设备赢）
     const FETCH_TIMEOUT_MS = 15000;           // 网络请求超时
+    const INIT_TIMEOUT_MS = 45000;            // v4.0.5：冷启动（SDK 加载 + 首次登录）放宽超时
     const AUTO_PUSH_DEBOUNCE_MS = 5000;       // 写操作后自动 push 防抖
     const PULL_INTERVAL_MS = 5 * 60 * 1000;   // 定时 pull 间隔
     const EPOCH = '1970-01-01T00:00:00.000Z'; // 首次全量同步起点
@@ -299,16 +300,20 @@
         // 重置 appPromise（登录态变化后需要重建）
         function resetApp() { appPromise = null; }
 
-        // SDK 调用无内建超时，统一包 15s
-        function withTimeout(promise, label) {
+        // SDK 调用无内建超时，统一包超时（常规 15s；冷启动初始化走 45s）
+        function withTimeout(promise, label, timeoutMs = FETCH_TIMEOUT_MS) {
             return Promise.race([
                 promise,
                 new Promise((resolve, reject) => setTimeout(() => {
-                    const e = new Error(label + '超时（15s）');
+                    const e = new Error(label + `超时（${Math.round(timeoutMs / 1000)}s）`);
                     e.code = 'SYNC_TIMEOUT';
                     reject(e);
-                }, FETCH_TIMEOUT_MS))
+                }, timeoutMs))
             ]);
+        }
+        // 冷启动：SDK CDN 加载 + 首次匿名登录叠加，放宽到 45s（v4.0.5）
+        function withInitTimeout(promise, label) {
+            return withTimeout(promise, label, INIT_TIMEOUT_MS);
         }
 
         return {
@@ -316,7 +321,7 @@
 
             async testConnection() {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     await withTimeout(db.collection('tasks').limit(1).get(), 'CloudBase 查询');
                     return { ok: true, message: '连接成功，tasks 集合可访问' };
@@ -356,7 +361,7 @@
 
             async getCurrentUser() {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const auth = app.auth();
                     const loginState = await auth.getLoginState();
                     if (loginState && loginState.user) {
@@ -370,7 +375,7 @@
 
             async upsert(table, rows) {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     // doc(id).set() = 存在则更新、不存在则新增（upsert）
                     for (const row of rows) {
@@ -388,7 +393,7 @@
 
             async fetchSince(table, iso) {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     const _ = db.command;
                     // SDK 查询默认 20 条上限，limit 最大 100 —— skip/limit 循环拉全
@@ -420,7 +425,7 @@
             // ---- 设备注册表（F-109~F-112），集合 devices，doc id 即 deviceId ----
             async deviceUpsert(row) {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     await withTimeout(db.collection('devices').doc(String(row.id)).set({
                         data: row.data,
@@ -433,7 +438,7 @@
 
             async deviceGet(id) {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     const res = await withTimeout(db.collection('devices').doc(String(id)).get(), 'CloudBase 设备查询');
                     const doc = res && Array.isArray(res.data) ? res.data[0] : (res && res.data);
@@ -446,7 +451,7 @@
 
             async deviceList() {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     const res = await withTimeout(db.collection('devices').limit(100).get(), 'CloudBase 设备列表查询');
                     const all = (res && Array.isArray(res.data)) ? res.data : [];
@@ -458,7 +463,7 @@
 
             async deviceDelete(id) {
                 try {
-                    const app = await withTimeout(getApp(), 'CloudBase 连接');
+                    const app = await withInitTimeout(getApp(), 'CloudBase 连接');
                     const db = app.database();
                     await withTimeout(db.collection('devices').doc(String(id)).remove(), 'CloudBase 设备删除');
                 } catch (err) {
@@ -481,6 +486,7 @@
         _adapter: null,
         _adapterSig: null,
         _deviceStatusCache: null,  // { doc, fetchedAt } 设备状态自查缓存（F-111/F-112）
+        _pulledStamps: new Map(),  // v4.0.5：当轮 pull 落库记录戳 `${store}:${id}` → updatedAt，push 跳过回声
 
         // lastSyncAt 按 provider 分键存储，切换后端后首次同步自动全量 push
         _lastSyncKey(provider) {
@@ -617,9 +623,15 @@
             const since = cfg.lastSyncAt || EPOCH;
             const sinceMs = toMillis(since);
             let pushed = 0;
+            let echoes = 0;
             for (const store of SYNC_STORES) {
                 const all = await db.getAllIncludingDeleted(store);
-                const dirty = all.filter(r => toMillis(r.updatedAt) > sinceMs);
+                // v4.0.5：跳过当轮刚从云端 pull 落库且本地未改动的记录（回声 push）
+                const dirty = all.filter(r => {
+                    if (toMillis(r.updatedAt) <= sinceMs) return false;
+                    if (this._pulledStamps.get(`${store}:${keyOf(store, r)}`) === r.updatedAt) { echoes++; return false; }
+                    return true;
+                });
                 if (!dirty.length) continue;
                 const rows = dirty.map(r => ({
                     id: keyOf(store, r),
@@ -631,7 +643,7 @@
                 await adapter.upsert(STORE_TABLE_MAP[store], rows);
                 pushed += rows.length;
             }
-            console.log('[LifeOS Sync] push 完成:', pushed, '条');
+            console.log('[LifeOS Sync] push 完成:', pushed, '条' + (echoes ? `（跳过回声 ${echoes} 条）` : ''));
             return { pushed };
         },
 
@@ -645,6 +657,7 @@
             const db = window.LifeOS.Database;
             const since = cfg.lastSyncAt || EPOCH;
             let pulled = 0, conflicts = 0;
+            this._pulledStamps = new Map(); // v4.0.5：每轮 pull 重置回声记录
             for (const store of SYNC_STORES) {
                 const rows = await adapter.fetchSince(STORE_TABLE_MAP[store], since);
                 if (!Array.isArray(rows) || !rows.length) continue;
@@ -660,6 +673,7 @@
                     if (result.action === 'remote') {
                         // putRaw：保留远端打戳，不触发再次打戳/再次 push
                         await db.putRaw(store, remote);
+                        this._pulledStamps.set(`${store}:${row.id}`, remote.updatedAt);
                         pulled++;
                     } else if (result.action === 'conflict') {
                         await this._queueConflict(store, String(row.id), local, remote);

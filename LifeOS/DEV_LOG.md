@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.3.2（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.4.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-26】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -785,6 +785,23 @@ node --check LifeOS/js/sync.js → OK
 | SW 缓存 | `v20260725-6` → `v20260726-1` |
 | 部署/校验 | habits.html / core.js / sw.js 单文件部署，curl 校验线上含 `cal-stats-row`、`calcLongestStreak`、新 SW 版本号 ✅ |
 | 验证方式 | headless Chrome CDP 移动（390px）/桌面（1600px）真机视口渲染截图核验；桌面布局先出 mockup 渲染图经用户确认后实施；测试期拦截 `/api/*` 防止演示数据污染本机 lifeos-db.json |
+
+### 9.27 v5.4.0 任务/时间轴联动 + 任务统计 + 打卡详情 + 情绪月历 + v4.0.5/v4.2.0 补做（2026-07-27）
+
+**背景**：一次性清扫 PRD 四个功能缺口（F-027/F-035/F-044/F-067）与两个历史规划槽位（v4.0.5 同步健壮性、v4.2.0 移动端 M1–M3），并在 PRD 规划 F-123 起床/睡觉打卡（v5.5，仅文档）。
+
+| 项目 | 内容 |
+|------|------|
+| F-027 任务完成↔时间轴联动 | timeline 事件加 `completed` 字段（默认 false，LWW 自动同步）；`TaskStore.toggleComplete` 经 `_syncTimelineCompleted` 按 taskId 索引把 date ≤ 今天的关联事件写成任务完成态（撤回双向还原）；timeline.html completed 事件渲染 ✓ 删除线 + 绿色描边；core-data 新增用例 |
+| F-035 任务统计视图 | tasks.html 头部「📊 统计」弹窗：周/月 Tab、每日完成数 CSS 柱状图、完成率 SVG 折线、四象限分布横条（父任务口径，样式与 habits 数据面板同套，图表类已收敛到 style.css 共享） |
+| F-044 习惯详情弹窗 | 习惯卡片点击打开详情：摘要（streak/总打卡/计划进度）+ 逐条历史记录列表（日期/状态/metrics/note，最近 30 条）+ 每条「编辑」跳回当日打卡弹窗；富文本+图片复盘与习惯级激励语仍未做（PRD 已注明） |
+| F-067 情绪天气月历 | review.html 新增月历区块（情绪 emoji 日期格，月切换，点击 `loadDate` 回当日）；补 F-066 遗留的「情绪原因」输入框（schema 早有 emotionReason）；支持 `?date=` 定位；保持 8 个面部 emoji（PRD 注明与天气图标原文的差异） |
+| v4.0.5 补做 | 冷启动：新增 `INIT_TIMEOUT_MS=45000`，CloudBase `getApp()` 全部 8 处改走 `withInitTimeout`（SDK 加载+首次登录不再吃 15s）；回声：pull 落库记录打戳入 `_pulledStamps`（`store:id → updatedAt`），push 扫描跳过未改动的回声记录（本地再编辑后 updatedAt 变化即恢复可推）；sync-merge 新增 2 用例（33 → 35） |
+| v4.2.0 补做 | M1：mobile-nav.js 注入底部 Tab Bar（8 页图标，当前页高亮，仅 ≤768px 显示，页面底部留 76px）；M2：tasks.html 象限 Tab（isMobileView + v-show 单象限）；M3：style.css 用 `body` 前缀加权压过各页内联样式——弹窗 bottom sheet 化（贴底全宽 + 上滑动画）+ 弹窗内表单控件 16px 防 iOS 缩放 |
+| F-123 规划（仅文档） | PRD §4.1.19 + US-033 + MoSCoW/Checklist/§5.2 v5.5：时间轴页起床/睡觉一键打卡，间隔即实际睡眠时长，跨天记到起床日 |
+| 测试 | core-data 11（+F-027）、sync-merge 35（+v4.0.5×2）、subtask 9、ai-planner-parse 5/6、habit-plan 7、habit-metrics 5 全绿；4 个改动页面 script 语法校验通过 |
+| SW 缓存 | `v20260726-1` → `v20260727-1` |
+| 部署/校验 | core.js / sync.js / mobile-nav.js / style.css / tasks.html / timeline.html / review.html / habits.html / sw.js 部署，curl 校验 ✅ |
 
 ### 9.7 与既有功能的关系
 

@@ -88,6 +88,42 @@
         window.addEventListener('resize', function () {
             if (window.innerWidth > 768) closeNav();
         });
+
+        injectTabBar();
+    }
+
+    /* v4.2.0 M1：底部 Tab Bar（仅 ≤768px 由 CSS 显示，桌面端不影响） */
+    var TAB_ITEMS = [
+        { url: 'index.html',      icon: '📊', name: '仪表盘' },
+        { url: 'timeline.html',   icon: '⏰', name: '时间轴' },
+        { url: 'tasks.html',      icon: '📋', name: '任务' },
+        { url: 'habits.html',     icon: '✅', name: '习惯' },
+        { url: 'review.html',     icon: '📝', name: '回顾' },
+        { url: 'learning.html',   icon: '🎓', name: '学习' },
+        { url: 'characters.html', icon: '👤', name: '角色' },
+        { url: 'settings.html',   icon: '⚙️', name: '设置' }
+    ];
+
+    function currentPage() {
+        var file = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+        return file === '' ? 'index.html' : file;
+    }
+
+    function injectTabBar() {
+        if (document.getElementById('mobile-tab-bar')) return; // 幂等
+        var page = currentPage();
+        var bar = document.createElement('nav');
+        bar.id = 'mobile-tab-bar';
+        bar.setAttribute('aria-label', '底部导航');
+        TAB_ITEMS.forEach(function (item) {
+            var a = document.createElement('a');
+            a.href = item.url;
+            a.className = 'tab-item' + (item.url === page ? ' active' : '');
+            a.innerHTML = '<span class="tab-icon" aria-hidden="true">' + item.icon + '</span>' +
+                          '<span class="tab-name">' + item.name + '</span>';
+            bar.appendChild(a);
+        });
+        document.body.appendChild(bar);
     }
 
     if (document.readyState === 'loading') {

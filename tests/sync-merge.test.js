@@ -875,6 +875,50 @@ async function testHeartbeatDemotesWhenMasterFalse() {
     assert.strictEqual(row.data.isMaster, false, '心跳上报 isMaster 应为 false');
 }
 
+// ============ v4.0.5：pull 回声 push + 冷启动超时 ============
+
+async function testPulledEchoRecordsAreNotRePushed() {
+    const { LifeOS } = loadLifeOSWithContext();
+    const remoteRow = {
+        id: 'task-remote-1',
+        data: { id: 'task-remote-1', title: '他端任务', date: '2026-07-25', completed: false },
+        updated_at: '2026-07-25T10:00:00.000Z',
+        updated_by: 'dev-other',
+        deleted_at: null
+    };
+    const { calls, adapter } = makeDeviceMockAdapter(null);
+    adapter.fetchSince = async (table) => table === 'tasks' ? [remoteRow] : [];
+    await setupSyncWithMock(LifeOS, adapter);
+
+    // 本机另有一条真实改动
+    await LifeOS.Task.create({ title: '本机改动', date: '2026-07-25', deadline: '2026-07-25', priority: 5 });
+
+    await LifeOS.Sync.pull();
+    const localCopy = await LifeOS.Database.get('tasks', 'task-remote-1');
+    assert.ok(localCopy, 'pull 应落库远端记录');
+
+    const pushResult = await LifeOS.Sync.push();
+    const pushedIds = calls.upsert.flatMap(c => c.rows.map(r => r.id));
+    assert.ok(!pushedIds.includes('task-remote-1'), '当轮 pull 落库的记录不得回声 push');
+    assert.ok(pushedIds.length > 0, '本机真实改动仍应 push');
+    assert.ok(pushResult.pushed >= 1);
+
+    // 本地再编辑该记录后（updatedAt 变化），应恢复可 push
+    const edited = { ...localCopy, title: '本机编辑过', updatedAt: '2026-07-25T12:00:00.000Z' };
+    await LifeOS.Database.putRaw('tasks', edited);
+    await LifeOS.Sync.push();
+    const pushedIds2 = calls.upsert.flatMap(c => c.rows.map(r => r.id));
+    assert.ok(pushedIds2.includes('task-remote-1'), '本地编辑后应正常 push');
+}
+
+function testColdStartUsesRelaxedTimeout() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'LifeOS', 'js', 'sync.js'), 'utf8');
+    assert.ok(/INIT_TIMEOUT_MS\s*=\s*45000/.test(src), '应定义 45s 冷启动超时');
+    const initCalls = src.match(/withInitTimeout\(getApp\(\)/g) || [];
+    assert.strictEqual(initCalls.length, 8, 'getApp() 全部 8 处调用应走放宽超时');
+    assert.ok(!/withTimeout\(getApp\(\)/.test(src), 'getApp() 不应再走 15s 常规超时');
+}
+
 const tests = [
     testRemoteNewerWithoutLocalChangesUsesRemote,
     testLocalNewerKeepsLocal,
@@ -908,7 +952,9 @@ const tests = [
     testHardDeleteDeviceMasterGuard,
     testCleanupRevokedDevices,
     testSetMainDeviceGlobalUnique,
-    testHeartbeatDemotesWhenMasterFalse
+    testHeartbeatDemotesWhenMasterFalse,
+    testPulledEchoRecordsAreNotRePushed,
+    testColdStartUsesRelaxedTimeout
 ];
 
 (async () => {

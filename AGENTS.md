@@ -150,6 +150,7 @@ start.bat                         # Windows 一键启动
 ### 部署到 CloudBase
 
 ```bash
+# 每个新窗口部署前都要先执行这两行（不设 XDG_CONFIG_HOME 会触发 device flow 重新授权）
 export MSYS_NO_PATHCONV=1
 export XDG_CONFIG_HOME="C:/Users/21136/.config"
 node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/@cloudbase/cli/bin/tcb" \
@@ -159,18 +160,20 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 > 注意：
 > - `MSYS_NO_PATHCONV=1` 必须设置，否则 Git Bash 会把 `/` 转成 MSYS 根路径。
-> - `XDG_CONFIG_HOME` 必须指向 `C:/Users/21136/.config`，否则 CLI 每次都会触发 device flow 重新授权。
+> - `XDG_CONFIG_HOME` 必须指向 `C:/Users/21136/.config`，否则 CLI 找不到已存凭证、每次都会触发 device flow 重新授权。
+> - **授权机制**：凭证存于 `C:/Users/21136/.config/.cloudbase/auth.json`——refreshToken 30 天有效（到期必须重新授权一次，腾讯云硬限制），临时密钥 2 小时有效（CLI 每次运行自动用 refreshToken 换新的，无需人工干预）。**刻意不 `setx` 持久化该变量**（会影响全账户所有进程），保持每次临时 export。
+> - **网络排障**：若报 `tcb_refresh ... TLS connection was established` 类错误，多为本机代理（Clash fake-ip 等）劫持了 `iaas.cloud.tencent.com`；检查/切换代理状态后重试即可（直连恢复后原命令可跑通）。
 > - 改码后必须同步升级 `LifeOS/sw.js` 的缓存版本号，并部署改动文件。
 
 ---
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.3.2`（2026-07-26 发布）
+- **Current / Latest**：`v5.4.0`（2026-07-27 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260726-1`
+- **SW 缓存版本**：`lifeos-static-v20260727-1`
 
 ---
 

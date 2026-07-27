@@ -580,6 +580,102 @@ body::before {
     }
 }
 
+/* ---- v4.2.0 M1：移动端底部 Tab Bar（mobile-nav.js 注入） ---- */
+#mobile-tab-bar { display: none; }
+
+/* ---- v4.2.0 M3：移动端弹窗 bottom sheet 化 + iOS 防缩放 ---- */
+@media (max-width: 768px) {
+    #mobile-tab-bar {
+        display: flex;
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 900;
+        background: var(--bg-card);
+        backdrop-filter: blur(16px);
+        border-top: 1px solid var(--border-card);
+        padding-bottom: env(safe-area-inset-bottom);
+        overflow-x: auto;
+    }
+    #mobile-tab-bar .tab-item {
+        flex: 1;
+        min-width: 44px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: 6px 2px 4px;
+        font-size: 0.6rem;
+        color: var(--text-muted);
+        text-decoration: none;
+    }
+    #mobile-tab-bar .tab-icon { font-size: 1.15rem; line-height: 1; }
+    #mobile-tab-bar .tab-item.active { color: var(--color-water-deep); font-weight: 600; }
+
+    /* 内容不被底部 Tab Bar 遮挡 */
+    .main-content { padding-bottom: 76px; }
+
+    /* bottom sheet：选择器加权（body 前缀）压过各页内联 .modal 定义 */
+    body .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+    body .modal {
+        width: 100%;
+        max-width: 100%;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        max-height: 92dvh;
+        animation: sheetUp 0.25s ease-out;
+    }
+    /* iOS 输入框 <16px 聚焦会自动放大页面：弹窗内表单控件统一 16px */
+    body .modal input,
+    body .modal textarea,
+    body .modal select {
+        font-size: 16px;
+    }
+}
+@keyframes sheetUp {
+    from { transform: translateY(48px); opacity: 0.4; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---- v4.2.0 M2：四象限移动端 Tab（tasks.html） ---- */
+.quadrant-mobile-tabs { display: none; }
+@media (max-width: 768px) {
+    .quadrant-mobile-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .quadrant-mobile-tab {
+        flex: 1; padding: 10px 4px; border-radius: var(--radius-md);
+        border: 1px solid var(--border-light); background: white;
+        cursor: pointer; font-size: 0.85rem; font-family: var(--font-sans);
+        color: var(--text-secondary);
+    }
+    .quadrant-mobile-tab.active {
+        background: var(--color-ravenclaw-blue);
+        color: white;
+        border-color: var(--color-ravenclaw-blue);
+    }
+}
+
+/* ---- F-035 统计图表（tasks.html，与 habits 数据面板同风格） ---- */
+.stats-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.panel-tab { padding: 6px 14px; border-radius: 16px; border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.8rem; transition: all 0.2s; }
+.panel-tab.active { background: var(--color-water-deep); color: white; border-color: var(--color-water-deep); }
+.stats-summary { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; }
+.panel-section-title { font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin: 14px 0 6px; }
+.bar-chart { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding: 8px 4px 0; border-bottom: 1px solid var(--border-light); }
+.bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+.bar-item .bar { width: 70%; max-width: 28px; border-radius: 4px 4px 0 0; background: var(--color-water-light); min-height: 2px; transition: background 0.2s; }
+.bar-item .bar.has-data { background: var(--color-mint); }
+.bar-labels { display: flex; gap: 3px; padding: 4px 4px 0; }
+.bar-labels span { flex: 1; text-align: center; font-size: 0.65rem; color: var(--text-muted); overflow: hidden; white-space: nowrap; }
+.metric-chart { width: 100%; }
+.metric-chart .point { fill: var(--color-water-deep); }
+.metric-chart .line { fill: none; stroke: var(--color-water-deep); stroke-width: 2; opacity: 0.6; }
+.quad-dist-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.8rem; }
+.quad-dist-label { flex: 0 0 110px; color: var(--text-secondary); }
+.quad-dist-track { flex: 1; height: 10px; border-radius: 5px; background: var(--bg-hover); overflow: hidden; }
+.quad-dist-bar { height: 100%; border-radius: 5px; transition: width 0.3s; }
+.quad-dist-count { flex: 0 0 28px; text-align: right; color: var(--text-muted); }
+
 .modal h3 {
     font-family: var(--font-serif);
     font-size: 1.3rem;

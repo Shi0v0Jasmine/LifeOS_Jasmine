@@ -209,6 +209,11 @@
             width: var(--event-width, calc(100% - 8px)) !important;
         }
 
+        /* F-027：任务完成联动样式 */
+        .timeline-event.task-done { border: 1.5px solid var(--color-mint); opacity: 0.75; }
+        .timeline-event.task-done .event-title { text-decoration: line-through; }
+        .timeline-event.task-done .event-title::before { content: '✓ '; color: var(--color-mint-deep); font-weight: 700; text-decoration: none; display: inline-block; }
+
         /* 手机端栏切换 Tab：桌面端隐藏（双栏并排） */
         .timeline-mobile-tabs { display: none; }
 
@@ -331,7 +336,7 @@
                                 >
                                     <span class="slot-plus">+</span>
                                 </div>
-                                <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="getCategoryClass(evt.category)" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
                                     <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
                                 </div>
@@ -352,7 +357,7 @@
                                 <div v-for="slot in timeSlots" :key="slot.time" class="time-slot" @click="openAddEvent('actual', slot)">
                                     <span class="slot-plus">+</span>
                                 </div>
-                                <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="getCategoryClass(evt.category)" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
                                     <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
                                 </div>
