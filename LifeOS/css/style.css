@@ -1411,6 +1411,7 @@ body::before {
 .category-work { background: rgba(52, 211, 153, 0.35); }
 .category-rest { background: rgba(253, 230, 138, 0.45); }
 .category-sport { background: rgba(251, 191, 36, 0.35); }
+.category-sleep { background: rgba(167, 139, 250, 0.35); }
 .category-other { background: rgba(148, 163, 184, 0.25); }
 
 /* ---- 类别选择器 ---- */
@@ -1445,6 +1446,7 @@ body::before {
 .category-btn.category-work.active { background: rgba(52, 211, 153, 0.3); }
 .category-btn.category-rest.active { background: rgba(253, 230, 138, 0.4); }
 .category-btn.category-sport.active { background: rgba(251, 191, 36, 0.3); }
+.category-btn.category-sleep.active { background: rgba(167, 139, 250, 0.3); }
 .category-btn.category-other.active { background: rgba(148, 163, 184, 0.2); }
 
 /* ---- 事件弹窗 ---- */

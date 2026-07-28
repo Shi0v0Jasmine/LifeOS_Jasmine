@@ -35,6 +35,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（29 项）
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
 │   ├── habit-metrics.test.js    ← 习惯度量/AI 解析/数据面板聚合（5 项）
+│   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
 │   └── ai-planner-parse.test.js ← AI 规划解析（5/6 项，纯对象无数组为设计预期）
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
     ├── index.html               ← Dashboard 首页
@@ -135,6 +136,7 @@ node tests/subtask.test.js        # 子任务专项（9 项）
 node tests/sync-merge.test.js     # 同步引擎（29 项）
 node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
 node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项）
+node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（5/6 项）
 ```
 
@@ -169,18 +171,18 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.4.1`（2026-07-27 发布）
+- **Current / Latest**：`v5.5.0`（2026-07-27 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260727-2`
+- **SW 缓存版本**：`lifeos-static-v20260727-3`
 
 ---
 
 ## 8. 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ sw.js 缓存版本号 +1

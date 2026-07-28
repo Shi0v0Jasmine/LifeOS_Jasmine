@@ -1,7 +1,7 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.4.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v5.5.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-26】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
@@ -812,6 +812,20 @@ node --check LifeOS/js/sync.js → OK
 | README | v1.2-dev → v5.4.0 全面更新：线上地址、项目结构（sync.js/mobile-nav.js/cloud-functions）、功能概览、6 测试套件命令、数据模型字段 |
 | SW 缓存 | `v20260727-1` → `v20260727-2` |
 | 部署/校验 | manifest + 3 图标 + 9 页面 + sw.js 部署，curl 校验 200 与新引用 ✅ |
+
+### 9.29 v5.5.0 起床/睡觉打卡（F-123，2026-07-27）
+
+**背景**：PRD §4.1.19（US-033）。时间轴页面一键起床/睡觉打卡，两次打卡间隔即实际睡眠时长。
+
+| 项目 | 内容 |
+|------|------|
+| 数据模型 | 复用 timeline store：`category:'sleep'` 事件，startTime=睡觉时间、endTime=起床时间；`sleepOpen: true` 表示已睡未起；无睡眠记录时点起床记 `wakeOnly` 单点；LWW 同步天然覆盖，无新 store 无 DB 版本变更 |
+| `TimelineStore` | 新增 `sleepCheckIn(now)`（有进行中睡眠则取最新一次更新时间，否则新建）、`wakeCheckIn(now)`（闭合最近一次睡眠，date 归到起床日；无则记/更新当日 wakeOnly）、`getSleepState()`、`calcSleepDuration(event)`（跨天 +24h，未闭合/仅起床返回 null） |
+| UI（timeline.html） | 日期导航栏右侧「🌙 睡觉打卡」「🌅 起床打卡」按钮（带状态文案：已睡 23:30 / 已起 07:00）；跨天睡眠块在起床日从 00:00 渲染到起床时间（`getEventStyle` 钳制），事件块显示时长（如「7小时05分」）；类别新增「睡眠」（紫色 `category-sleep`），事件编辑弹窗可手动补打/改时间 |
+| 打卡幂等 | 进行中睡眠重复打卡更新同一事件；同日重复起床同理，均不堆叠 |
+| 测试 | 新增 `tests/sleep-checkin.test.js`（3 项：睡觉→起床闭环跨天归属/wakeOnly 单点/同日小睡与未闭合）；7 套件全绿 |
+| SW 缓存 | `v20260727-2` → `v20260727-3` |
+| 部署/校验 | core.js / timeline.html / style.css / sw.js 部署，curl 校验 ✅ |
 
 ### 9.7 与既有功能的关系
 

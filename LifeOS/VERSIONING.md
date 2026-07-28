@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.4.1`
-Latest released version: `5.4.1`（2026-07-27 发布，PWA 图标更换为水彩 LifeOS 手绘 logo + user-manual/README 更新）
+Current source version: `5.5.0`
+Latest released version: `5.5.0`（2026-07-27 发布，起床/睡觉打卡：时间轴快捷打卡，间隔即实际睡眠时长）
 
 版本号格式：
 
@@ -92,6 +92,7 @@ LifeOS 示例：
 | v5.3.2 | — | 2026-07-26 | v3 | bug修复/UI 适配：习惯页手机端卡片双行布局 + 徽标单行居中（计划 chip/暂停徽标不再挤断）；桌面端月历+指标 3:1 布局（整排限宽 1400px）；新增「今日打卡进度」「当前连续」指标（桌面 5 卡/手机保持 3 卡），「最长连续」正名为历史最佳（`HabitPlan.calcLongestStreak`）；打卡勾换 SVG 直线勾（跨平台一致）；操作按钮 emoji 居中修复 |
 | **v5.4.0** | — | **2026-07-27** | v3 | 小版本：F-027 任务完成↔时间轴联动（事件 completed 字段双向同步）/ F-035 任务统计弹窗（周/月完成数+完成率+四象限分布）/ F-044 习惯详情弹窗（摘要+逐条历史可编辑）/ F-067 情绪月历+原因输入；补做 v4.0.5（冷启动 45s 超时 + pull 回声 push 跳过）与 v4.2.0（移动端底部 Tab Bar + 四象限 Tab + bottom sheet）；PRD 新增 F-123 睡眠打卡规划（v5.5） |
 | v5.4.1 | — | 2026-07-27 | v3 | 资源/文档：PWA 图标换为水彩手绘 LifeOS logo（PNG 192/512 + 圆角透明；apple-touch-icon 180 白底，9 页面加 link；manifest icons 改 PNG 提升 iOS 兼容）；user-manual 更新至 v5.4.0（网页版地址 + AND 主设备 + 功能速览）；README 全面更新至 v5.4.0 |
+| **v5.5.0** | — | **2026-07-27** | v3 | 小版本：起床/睡觉打卡（F-123）；timeline store 加 `sleepCheckIn`/`wakeCheckIn`（`category:'sleep'` + `sleepOpen`/`wakeOnly`，跨天 date 归起床日，重复打卡取最新）；时间轴日期栏两个打卡按钮 + 跨天睡眠块 00:00 起渲染 + 时长文案；类别加「睡眠」；新增 sleep-checkin 测试 3 项 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
@@ -106,7 +107,7 @@ LifeOS 示例：
 ## 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ 更新本文件（Current source version + 版本历史 + DB 登记）
@@ -128,5 +129,5 @@ LifeOS 示例：
 | ~~v5.2.0~~ | ~~习惯周期计划与暂停（F-117~F-119）~~ | ✅ 已发布 |
 | ~~v5.3.0~~ | ~~习惯度量与数据面板（F-120 打卡成果度量 / F-121 打卡图片 AI 解析 / F-122 习惯数据面板）~~ | ✅ 已发布 |
 | ~~v5.4.0~~ | ~~联动/统计/详情/月历 + v4.0.5/v4.2.0 补做（F-027/F-035/F-044/F-067）~~ | ✅ 已发布 |
-| v5.5.0 | 起床/睡觉打卡（F-123，时间轴快捷打卡，间隔即睡眠时长） | 小版本 |
+| ~~v5.5.0~~ | ~~起床/睡觉打卡（F-123，时间轴快捷打卡，间隔即睡眠时长）~~ | ✅ 已发布 |
 | v6.0.0 | 新主流程（待规划：如原生壳打包、协作/分享功能） | 大版本 |

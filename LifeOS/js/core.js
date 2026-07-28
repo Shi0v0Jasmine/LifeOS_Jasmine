@@ -643,7 +643,80 @@
             }
             return directEvents;
         },
-        async getAll() { return db.getAll('timeline'); }
+        async getAll() { return db.getAll('timeline'); },
+
+        // ---- F-123 起床/睡觉打卡 ----
+        // 睡眠事件：category:'sleep'，startTime=睡觉时间，endTime=起床时间；
+        // sleepOpen=true 表示已睡未起；跨天时 date 记到起床日。
+        // 无睡眠记录时点起床 → wakeOnly 单点事件（仅记录起床时间）。
+        _latestOpenSleep(events) {
+            return events
+                .filter(e => e.category === 'sleep' && e.sleepOpen && !e._isRecurringInstance)
+                .sort((a, b) => (b.date + b.startTime).localeCompare(a.date + a.startTime))[0] || null;
+        },
+        _newSleepEvent(fields) {
+            return {
+                id: Utils.generateId(),
+                title: fields.title || '😴 睡眠',
+                description: '',
+                startTime: fields.time,
+                endTime: fields.time,
+                type: 'actual',
+                date: fields.date,
+                category: 'sleep',
+                taskId: null,
+                images: [],
+                repeatRule: null,
+                repeatEndDate: null,
+                isRecurring: false,
+                createdAt: Utils.now(),
+                updatedAt: Utils.now(),
+                ...fields.extra
+            };
+        },
+        // 🌙 睡觉打卡：有进行中睡眠则取最新一次更新时间，否则新建
+        async sleepCheckIn(now = new Date()) {
+            const date = Utils.formatDate(now);
+            const time = Utils.formatTime(now);
+            const open = this._latestOpenSleep(await db.getAll('timeline'));
+            if (open) {
+                return this.update(open.id, { date, startTime: time, endTime: time });
+            }
+            const data = this._newSleepEvent({ title: '😴 睡眠', date, time, extra: { sleepOpen: true } });
+            await db.put('timeline', data);
+            return data;
+        },
+        // 🌅 起床打卡：闭合最近一次睡眠（date 归到起床日）；无则记 wakeOnly 单点
+        async wakeCheckIn(now = new Date()) {
+            const date = Utils.formatDate(now);
+            const time = Utils.formatTime(now);
+            const all = await db.getAll('timeline');
+            const open = this._latestOpenSleep(all);
+            if (open) {
+                return this.update(open.id, { date, endTime: time, sleepOpen: false });
+            }
+            const todayWake = all.find(e => e.category === 'sleep' && e.wakeOnly && e.date === date);
+            if (todayWake) {
+                return this.update(todayWake.id, { startTime: time, endTime: time });
+            }
+            const data = this._newSleepEvent({ title: '🌅 起床', date, time, extra: { wakeOnly: true } });
+            await db.put('timeline', data);
+            return data;
+        },
+        // 当前睡眠状态：{ open }（有未闭合睡眠则非 null）
+        async getSleepState() {
+            const all = await db.getAll('timeline');
+            return { open: this._latestOpenSleep(all) };
+        },
+        // 睡眠时长（分钟），跨天自动 +24h；未闭合/仅起床返回 null
+        calcSleepDuration(event) {
+            if (!event || event.category !== 'sleep' || event.sleepOpen || event.wakeOnly) return null;
+            const [sh, sm] = event.startTime.split(':').map(Number);
+            const [eh, em] = event.endTime.split(':').map(Number);
+            let mins = (eh * 60 + em) - (sh * 60 + sm);
+            if (mins <= 0) mins += 24 * 60;
+            return mins;
+        }
     };
 
     const TaskStore = {

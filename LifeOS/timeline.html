@@ -215,6 +215,12 @@
         .timeline-event.task-done .event-title { text-decoration: line-through; }
         .timeline-event.task-done .event-title::before { content: '✓ '; color: var(--color-mint-deep); font-weight: 700; text-decoration: none; display: inline-block; }
 
+        /* F-123 起床/睡觉打卡 */
+        .sleep-checkin-group { display: flex; gap: 8px; margin-left: auto; }
+        .sleep-checkin-btn { padding: 8px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-light); background: white; cursor: pointer; font-size: 0.85rem; font-family: var(--font-sans); transition: all 0.2s; display: flex; align-items: center; gap: 6px; }
+        .sleep-checkin-btn:hover { border-color: var(--color-water-deep); background: var(--color-water-light); }
+        .sleep-checkin-btn .sleep-state { font-size: 0.7rem; color: var(--text-muted); }
+
         /* 手机端栏切换 Tab：桌面端隐藏（双栏并排） */
         .timeline-mobile-tabs { display: none; }
 
@@ -266,6 +272,16 @@
                 </div>
                 <button class="date-nav-btn" @click="changeDate(1)">›</button>
                 <button v-if="!isToday" class="date-today-btn" @click="goToday">回到今天</button>
+                <div class="sleep-checkin-group">
+                    <button class="sleep-checkin-btn" @click="doSleepCheckIn" title="记录睡觉时间">
+                        🌙 睡觉打卡
+                        <span v-if="sleepOpenEvent" class="sleep-state">已睡 {{ sleepOpenEvent.startTime }}</span>
+                    </button>
+                    <button class="sleep-checkin-btn" @click="doWakeCheckIn" title="记录起床时间">
+                        🌅 起床打卡
+                        <span v-if="todayWakeTime" class="sleep-state">{{ todayWakeTime }}</span>
+                    </button>
+                </div>
                 <div class="view-toggle-group">
                     <button :class="['view-toggle-btn', { active: viewMode === 'day' }]" @click="viewMode = 'day'">日</button>
                     <button :class="['view-toggle-btn', { active: viewMode === 'month' }]" @click="viewMode = 'month'">月</button>
@@ -339,7 +355,7 @@
                                 </div>
                                 <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
-                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
+                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}<span v-if="sleepDurationText(evt)">（{{ sleepDurationText(evt) }}）</span></div>
                                 </div>
                             </div>
                         </div>
@@ -360,7 +376,7 @@
                                 </div>
                                 <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
-                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}</div>
+                                    <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}<span v-if="sleepDurationText(evt)">（{{ sleepDurationText(evt) }}）</span></div>
                                 </div>
                             </div>
                         </div>
@@ -886,6 +902,39 @@
                     allEvents.value = await LifeOS.Timeline.getByDate(currentDate.value);
                     todayTasks.value = await LifeOS.Task.getByDate(currentDate.value);
                     skills.value = await LifeOS.Skill.getAll();
+                    await refreshSleepState();
+                };
+
+                // ---- F-123 起床/睡觉打卡 ----
+                const sleepOpenEvent = ref(null);
+                const todaySleepRecord = computed(() =>
+                    allEvents.value.find(e => e.category === 'sleep' && !e.wakeOnly && !e.sleepOpen) || null
+                );
+                const todayWakeTime = computed(() => {
+                    const rec = todaySleepRecord.value;
+                    if (rec) return `已起 ${rec.endTime}`;
+                    const wakeOnly = allEvents.value.find(e => e.category === 'sleep' && e.wakeOnly);
+                    return wakeOnly ? `已起 ${wakeOnly.startTime}` : '';
+                });
+                const refreshSleepState = async () => {
+                    const state = await LifeOS.Timeline.getSleepState();
+                    sleepOpenEvent.value = state.open;
+                };
+                const doSleepCheckIn = async () => {
+                    await LifeOS.Timeline.sleepCheckIn(new Date());
+                    if (currentDate.value !== LifeOS.Utils.formatDate()) goToday(); else await loadEvents();
+                };
+                const doWakeCheckIn = async () => {
+                    await LifeOS.Timeline.wakeCheckIn(new Date());
+                    if (currentDate.value !== LifeOS.Utils.formatDate()) goToday(); else await loadEvents();
+                };
+                // 睡眠时长文案（仅闭合的跨天/同日睡眠）
+                const sleepDurationText = (evt) => {
+                    const mins = LifeOS.Timeline.calcSleepDuration(evt);
+                    if (mins === null) return '';
+                    const h = Math.floor(mins / 60);
+                    const m = mins % 60;
+                    return m ? `${h}小时${m}分` : `${h}小时`;
                 };
 
                 // === 日统计 ===
@@ -935,6 +984,7 @@
                     { id: 'work', name: '工作', icon: '💼', className: 'category-work', color: '#34D399' },
                     { id: 'rest', name: '休息', icon: '☕', className: 'category-rest', color: '#FDE68A' },
                     { id: 'sport', name: '运动', icon: '🏃', className: 'category-sport', color: '#FBBF24' },
+                    { id: 'sleep', name: '睡眠', icon: '😴', className: 'category-sleep', color: '#A78BFA' },
                     { id: 'other', name: '其他', icon: '📝', className: 'category-other', color: '#94A3B8' }
                 ];
 
@@ -1087,7 +1137,12 @@
                 const processedActualEvents = computed(() => assignOverlapColumns(actualEvents.value));
 
                 const getEventStyle = (evt) => {
-                    const start = parseTime(evt.startTime);
+                    // F-123：跨天睡眠块（startTime > endTime）在起床日从 00:00 渲染到起床时间
+                    let startStr = evt.startTime;
+                    if (evt.category === 'sleep' && !evt.sleepOpen && evt.startTime > evt.endTime) {
+                        startStr = '00:00';
+                    }
+                    const start = parseTime(startStr);
                     const end = parseTime(evt.endTime);
                     let duration = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
                     if (duration < 0) duration += 24 * 60;
@@ -1351,7 +1406,8 @@
                     getEventStyle, getCategoryClass, getCategoryColor, parseTime,
                     openAddEvent, openEditEvent, closeEventModal, saveEvent, deleteEvent,
                     startTimer, stopTimer, toggleWeekday, assignPomodoroXP, closePomodoroDialog,
-                    onTaskDragStart, onTaskDragEnd, onSlotDragEnter, onSlotDragOver, onSlotDragLeave, onTaskDrop
+                    onTaskDragStart, onTaskDragEnd, onSlotDragEnter, onSlotDragOver, onSlotDragLeave, onTaskDrop,
+                    sleepOpenEvent, todayWakeTime, doSleepCheckIn, doWakeCheckIn, sleepDurationText
                 };
             }
         }).mount('#app');
