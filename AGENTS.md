@@ -169,7 +169,7 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 > - `MSYS_NO_PATHCONV=1` 必须设置，否则 Git Bash 会把 `/` 转成 MSYS 根路径。
 > - `XDG_CONFIG_HOME` 必须指向 `C:/Users/21136/.config`，否则 CLI 找不到已存凭证、每次都会触发 device flow 重新授权。
 > - **授权机制**：凭证存于 `C:/Users/21136/.config/.cloudbase/auth.json`——refreshToken 30 天有效（到期必须重新授权一次，腾讯云硬限制），临时密钥 2 小时有效（CLI 每次运行自动用 refreshToken 换新的，无需人工干预）。**刻意不 `setx` 持久化该变量**（会影响全账户所有进程），保持每次临时 export。
-> - **网络排障**：若报 `tcb_refresh ... TLS connection was established` 类错误，多为本机代理（Clash fake-ip 等）劫持了 `iaas.cloud.tencent.com`；检查/切换代理状态后重试即可（直连恢复后原命令可跑通）。
+> - **网络排障**：外网/VPN 环境，尤其 Clash `fake-ip` 模式，可能同时影响 `iaas.cloud.tencent.com`（凭证刷新）、`tcb-api.cloud.tencent.com`（Device Flow）、`tcb.tencentcloudapi.com`（环境/托管 API）和 `*.cos.ap-shanghai.tencentcos.cn`（静态文件上传）。典型症状包括 `TLS connection was established`、`Device Flow 轮询请求失败`、`DescribeStaticStore ECONNRESET`。优先临时关闭 VPN/代理后重试；若必须保留代理，应将上述域名加入直连/真实 DNS 规则，避免使用代理出口返回的跨区腾讯 API 节点。不要把临时查询到的 IP 永久写入系统 hosts。
 > - 改码后必须同步升级 `LifeOS/sw.js` 的缓存版本号，并部署改动文件。
 
 ---

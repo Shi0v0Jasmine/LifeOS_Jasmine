@@ -10,6 +10,7 @@
 
 ## v6.0.0 — AI 饮食独立工作台（2026-07-30）
 
+- CloudBase 发版完成：创建 `nutrition` 集合并设置登录用户读写规则，9 个静态资源已逐项上传且与线上 SHA-256 完全一致。部署时确认 Clash/VPN `fake-ip` 会干扰授权刷新、Device Flow、`DescribeStaticStore` 与 COS 上传；排障域名和直连建议已写入 `AGENTS.md`。
 - 新增 `nutrition.html`，桌面双栏优先，移动端在 768px 断点改为单栏；保留现有水彩、玻璃拟态、Ravenclaw 导航体系。
 - 新增 `js/nutrition.js`：餐食/运动/个人目标/周报 DAO、Mifflin–St Jeor 基础代谢、活动系数、减脂/维持/增肌目标、7 日聚合与本地微量营养复盘。
 - 新增餐食照片与运动截图多模态识别；AI 请求遵守 `json_object` 契约。照片只在页面内存中参与识别，持久化层使用字段白名单，原图不写入 IndexedDB、JSON 后端或云同步。
