@@ -1,10 +1,23 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v5.5.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
-> **最后更新**: 【2026-07-26】
+> **当前版本**: v6.0.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **最后更新**: 【2026-07-30】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
+
+---
+
+## v6.0.0 — AI 饮食独立工作台（2026-07-30）
+
+- 新增 `nutrition.html`，桌面双栏优先，移动端在 768px 断点改为单栏；保留现有水彩、玻璃拟态、Ravenclaw 导航体系。
+- 新增 `js/nutrition.js`：餐食/运动/个人目标/周报 DAO、Mifflin–St Jeor 基础代谢、活动系数、减脂/维持/增肌目标、7 日聚合与本地微量营养复盘。
+- 新增餐食照片与运动截图多模态识别；AI 请求遵守 `json_object` 契约。照片只在页面内存中参与识别，持久化层使用字段白名单，原图不写入 IndexedDB、JSON 后端或云同步。
+- 新增 `data/food-nutrition.json`，预置 39 种中西常见食物，支持搜索、份量缩放和离线记录。
+- IndexedDB v3 → v4，新增可同步 `nutrition` store（`kind`/`date`/`weekStart` 索引）；同步映射、本机 JSON 后端、Supabase 建表脚本、导入导出与 SW 离线缓存同步补齐。
+- 上一自然周自动生成营养周报；AI 不可用或记录不足时自动使用本地规则，不做医疗诊断。
+- 新增 `tests/nutrition.test.js` 9 项，覆盖热量目标、食物缩放、AI 解析、图片不落库、DAO、自然周与周报幂等降级。
+- 视觉验收：1440px 桌面与 390px 移动断点均无横向 DOM 溢出、无控制台 error/warning；概念图与实现截图保存在 `mockups/` 与 Codex visualizations。
 
 ---
 

@@ -36,12 +36,14 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
 │   ├── habit-metrics.test.js    ← 习惯度量/AI 解析/数据面板聚合（5 项）
 │   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
-│   └── ai-planner-parse.test.js ← AI 规划解析（8 项）
+│   ├── ai-planner-parse.test.js ← AI 规划解析（8 项）
+│   └── nutrition.test.js        ← AI 饮食/营养计算/隐私边界（9 项）
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
     ├── index.html               ← Dashboard 首页
     ├── timeline.html            ← 时间轴
     ├── tasks.html               ← 任务管理
     ├── habits.html              ← 习惯打卡
+    ├── nutrition.html           ← AI 饮食（餐食/运动/目标/周报）
     ├── review.html              ← 每日回顾
     ├── learning.html            ← 学习日记
     ├── characters.html          ← 角色库
@@ -56,6 +58,7 @@ D:\FUN_VibeCoding\LifeOS\
     │   └── style.css            ← 全局样式（CSS 变量 + 水彩/玻璃拟态主题）
     ├── js/
     │   ├── core.js              ← 数据层：DAO + 预置角色 + AIClient/AIPlanner（79KB）
+    │   ├── nutrition.js         ← AI 饮食 DAO + 营养计算/解析引擎
     │   ├── db.js                ← IndexedDB 底层封装
     │   ├── sync.js              ← 多端同步引擎（push/pull/LWW/冲突队列/设备管理/账号登录）
     │   ├── utils.js             ← 工具函数（日期/UUID/四象限/JSON 解析）
@@ -66,6 +69,7 @@ D:\FUN_VibeCoding\LifeOS\
     ├── assets/
     │   └── icons/               ← SVG 图标
     ├── data/
+    │   ├── food-nutrition.json  ← 本地常见食物营养数据库
     │   ├── character_dialogue_styles.json  ← 角色台词风格数据
     │   ├── lifeos-backup-*.json            ← 历史数据备份（已 gitignore）
     │   └── lifeos-db.json                  ← 本机后端持久化文件（已 gitignore）
@@ -105,7 +109,7 @@ D:\FUN_VibeCoding\LifeOS\
 1. **无构建步骤**：纯 HTML/CSS/JS，禁用 `import/export`、禁用 ES Module `<script type="module">`。
 2. **Vue 3 CDN 全局版**：`vue.global.js`，IIFE + `window.LifeOS` 暴露模块。
 3. **日期格式统一**：全程 `YYYY-MM-DD` 字符串，避免 `new Date()` 时区问题。
-4. **IndexedDB 版本**：当前 v3，升级必须写迁移逻辑并覆盖旧数据。
+4. **IndexedDB 版本**：当前 v4，升级必须写迁移逻辑并覆盖旧数据。
 5. **软删除**：业务记录删除改墓碑（`deletedAt`），同步时传播。
 6. **所有写操作打戳**：`updatedAt` + `updatedBy`（deviceId），同步归因需要。
 7. **CSS 变量系统**：颜色用 `var(--color-*)`，不硬编码。
@@ -138,6 +142,7 @@ node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
 node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项）
 node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
+node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
 ```
 
 ### 本地运行
@@ -171,18 +176,18 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.5.1`（2026-07-28 发布）
+- **Current / Latest**：`v6.0.0`（2026-07-30 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
-- **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260728-1`
+- **IndexedDB 版本**：v4
+- **SW 缓存版本**：`lifeos-static-v20260730-1`
 
 ---
 
 ## 8. 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ sw.js 缓存版本号 +1

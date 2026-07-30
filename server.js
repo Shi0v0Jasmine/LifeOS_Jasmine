@@ -23,10 +23,10 @@ app.use(express.static(path.join(__dirname, 'LifeOS')));
 
 function emptyDB() {
     return {
-        _meta: { app: 'LifeOS', version: '1.2.0', createdAt: new Date().toISOString() },
+        _meta: { app: 'LifeOS', version: '6.0.0', createdAt: new Date().toISOString() },
         timeline: [], tasks: [], habits: [], habitRecords: [],
         reviews: [], skills: [], notes: [], characters: [],
-        settings: [], moments: []
+        settings: [], moments: [], nutrition: []
     };
 }
 
@@ -95,7 +95,7 @@ app.put('/api/db', (req, res) => {
     }
     let db = readDB() || emptyDB();
     const storeNames = ['timeline','tasks','habits','habitRecords',
-                        'reviews','skills','notes','characters','settings','moments'];
+                        'reviews','skills','notes','characters','settings','moments','nutrition'];
     for (const store of storeNames) {
         if (!Array.isArray(incoming[store])) continue;
         if (!Array.isArray(db[store])) db[store] = [];

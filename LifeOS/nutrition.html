@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#7DD3FC">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+    <title>Life OS · AI 饮食</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js?v=1.3"></script>
+    <script src="js/nutrition.js?v=1.0"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/mobile-nav.js"></script>
+    <script src="js/pwa.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        body .main-content { width: calc(100% - var(--sidebar-width)); min-width: 0; }
+        .nutrition-page { width: 100%; max-width: 1440px; margin: 0 auto; }
+        .nutrition-header { align-items: flex-start; }
+        .header-actions { display: flex; align-items: center; gap: 10px; font-family: var(--font-sans); }
+        .date-control {
+            display: flex; align-items: center; gap: 6px; padding: 5px;
+            background: var(--bg-card); border: 1px solid var(--border-card);
+            border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+        }
+        .date-control button {
+            width: 30px; height: 30px; border: 0; border-radius: 50%;
+            background: transparent; color: var(--text-secondary); cursor: pointer;
+        }
+        .date-control button:hover { background: var(--bg-hover); }
+        .date-control input {
+            width: 126px; border: 0; background: transparent; color: var(--text-primary);
+            font: 0.82rem var(--font-sans); outline: none;
+        }
+        .soft-btn, .primary-btn, .ghost-btn, .danger-btn {
+            border-radius: var(--radius-md); padding: 9px 15px; cursor: pointer;
+            font: 0.84rem var(--font-sans); transition: transform .2s, box-shadow .2s, background .2s;
+        }
+        .soft-btn { border: 1px solid var(--border-light); color: var(--text-secondary); background: var(--bg-card); }
+        .soft-btn:hover { color: var(--text-primary); box-shadow: var(--shadow-sm); }
+        .primary-btn { border: 1px solid var(--color-ravenclaw-blue); color: var(--text-inverse); background: var(--color-ravenclaw-blue); }
+        .primary-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); background: var(--color-slytherin-green); }
+        .primary-btn:disabled, .soft-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+        .ghost-btn { border: 1px dashed var(--border-light); background: transparent; color: var(--text-secondary); }
+        .danger-btn { border: 0; background: transparent; color: var(--color-urgent); padding: 5px 8px; }
+
+        .nutrition-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, .8fr); gap: 18px; }
+        .nutrition-card {
+            background: var(--bg-card); backdrop-filter: blur(12px);
+            border: 1px solid var(--border-card); border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm); padding: 20px;
+        }
+        .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+        .card-heading h3 { font-size: 1rem; font-family: var(--font-sans); margin: 0; display: flex; align-items: center; gap: 8px; }
+        .card-kicker { color: var(--text-muted); font: .74rem var(--font-sans); margin-top: 4px; }
+        .privacy-chip, .source-chip, .status-chip {
+            display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+            padding: 4px 9px; border-radius: 20px; font: .7rem var(--font-sans);
+            background: var(--color-mint-light); color: var(--color-mint-deep);
+        }
+        .source-chip.ai { background: var(--color-water-light); color: var(--color-water-deep); }
+        .source-chip.manual { background: var(--color-gold-light); color: var(--color-gold-deep); }
+
+        .meal-type-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+        .meal-type-tabs button {
+            border: 1px solid var(--border-light); border-radius: 18px; padding: 6px 13px;
+            color: var(--text-secondary); background: var(--text-inverse); font: .78rem var(--font-sans); cursor: pointer;
+        }
+        .meal-type-tabs button.active { border-color: var(--color-water-deep); background: var(--color-water-light); color: var(--color-water-deep); font-weight: 600; }
+
+        .meal-workbench { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr); gap: 14px; }
+        .upload-zone {
+            position: relative; min-height: 220px; border: 1.5px dashed var(--color-water);
+            border-radius: var(--radius-lg); background: var(--color-water-light);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            padding: 18px; text-align: center; overflow: hidden;
+        }
+        .upload-zone.has-image { color: var(--text-inverse); background: var(--color-ravenclaw-blue); }
+        .upload-zone img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .6; }
+        .upload-zone-content { position: relative; z-index: 1; }
+        .upload-icon { font-size: 2rem; margin-bottom: 8px; }
+        .upload-title { font: 600 .9rem var(--font-sans); }
+        .upload-hint { margin: 6px 0 14px; color: var(--text-muted); font: .72rem/1.5 var(--font-sans); }
+        .has-image .upload-hint { color: var(--text-inverse); }
+        .upload-zone input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; z-index: 2; }
+        .upload-actions { position: relative; z-index: 3; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+
+        .analysis-panel {
+            min-height: 220px; border: 1px solid var(--border-light); border-radius: var(--radius-lg);
+            padding: 14px; display: flex; flex-direction: column;
+        }
+        .analysis-empty { flex: 1; display: grid; place-items: center; text-align: center; color: var(--text-muted); font: .8rem/1.6 var(--font-sans); }
+        .food-list { display: flex; flex-direction: column; gap: 7px; max-height: 170px; overflow-y: auto; }
+        .food-row { display: grid; grid-template-columns: minmax(90px, 1fr) 70px 65px 30px; gap: 7px; align-items: center; font: .78rem var(--font-sans); }
+        .food-row input {
+            min-width: 0; padding: 6px 8px; border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm); background: var(--text-inverse); font: inherit;
+        }
+        .food-kcal { text-align: right; color: var(--text-secondary); }
+        .analysis-total { display: flex; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border-light); font: .78rem var(--font-sans); }
+        .analysis-total strong { color: var(--color-ravenclaw-blue); }
+        .analysis-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+        .analysis-message { color: var(--text-muted); font: .72rem var(--font-sans); }
+        .error-message { color: var(--color-urgent); }
+
+        .calorie-overview { display: grid; grid-template-columns: 126px 1fr; gap: 18px; align-items: center; }
+        .calorie-ring {
+            --progress: 0deg; width: 126px; height: 126px; border-radius: 50%;
+            background: conic-gradient(var(--color-water-deep) var(--progress), var(--color-water-light) 0);
+            display: grid; place-items: center; position: relative;
+        }
+        .calorie-ring::after { content: ''; width: 96px; height: 96px; border-radius: 50%; background: var(--text-inverse); position: absolute; }
+        .ring-copy { position: relative; z-index: 1; text-align: center; font-family: var(--font-sans); }
+        .ring-copy strong { display: block; font-size: 1.35rem; color: var(--color-ravenclaw-blue); }
+        .ring-copy span { color: var(--text-muted); font-size: .67rem; }
+        .calorie-lines { display: flex; flex-direction: column; gap: 10px; }
+        .calorie-line { display: flex; justify-content: space-between; align-items: baseline; font: .78rem var(--font-sans); color: var(--text-secondary); }
+        .calorie-line strong { color: var(--text-primary); font-size: .92rem; }
+        .target-empty { color: var(--text-muted); font: .78rem/1.6 var(--font-sans); }
+        .macro-list { display: grid; gap: 11px; margin-top: 17px; }
+        .macro-header { display: flex; justify-content: space-between; font: .74rem var(--font-sans); color: var(--text-secondary); margin-bottom: 5px; }
+        .progress-track { height: 7px; border-radius: 5px; background: var(--bg-hover); overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: inherit; background: var(--color-water-deep); transition: width .3s; }
+        .macro-item:nth-child(2) .progress-fill { background: var(--color-mint); }
+        .macro-item:nth-child(3) .progress-fill { background: var(--color-gold-deep); }
+
+        .exercise-card { grid-column: 1 / -1; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 15px 20px; }
+        .exercise-icon { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--color-mint-light); font-size: 1.35rem; }
+        .exercise-summary { font: .83rem var(--font-sans); }
+        .exercise-summary strong { color: var(--color-slytherin-green); font-size: 1rem; margin-right: 8px; }
+        .exercise-summary span { color: var(--text-muted); }
+
+        .lower-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .8fr); gap: 18px; margin-top: 18px; }
+        .record-list { display: flex; flex-direction: column; gap: 8px; }
+        .record-row {
+            display: grid; grid-template-columns: 52px minmax(0, 1fr) 90px 34px; align-items: center;
+            gap: 12px; padding: 11px 12px; border: 1px solid var(--border-light);
+            border-radius: var(--radius-md); background: var(--text-inverse); font-family: var(--font-sans);
+        }
+        .meal-badge { text-align: center; padding: 5px 7px; border-radius: 14px; background: var(--color-water-light); color: var(--color-water-deep); font-size: .7rem; }
+        .record-main { min-width: 0; }
+        .record-title { font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .record-meta { margin-top: 3px; color: var(--text-muted); font-size: .67rem; }
+        .record-kcal { text-align: right; font-size: .8rem; color: var(--text-secondary); }
+        .empty-records { padding: 28px; text-align: center; color: var(--text-muted); font: .78rem var(--font-sans); }
+
+        .chart-legend { display: flex; gap: 14px; font: .68rem var(--font-sans); color: var(--text-muted); }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+        .legend-dot.intake { background: var(--color-water-deep); }
+        .legend-dot.burn { background: var(--color-mint); }
+        .weekly-chart { height: 190px; display: flex; align-items: flex-end; gap: 8px; padding-top: 16px; border-bottom: 1px solid var(--border-light); }
+        .chart-day { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .bar-pair { height: 150px; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+        .chart-bar { width: min(16px, 38%); min-height: 2px; border-radius: 5px 5px 0 0; background: var(--color-water-deep); }
+        .chart-bar.burn { background: var(--color-mint); }
+        .chart-label { margin-top: 7px; color: var(--text-muted); font: .64rem var(--font-sans); }
+
+        .weekly-report { margin-top: 18px; }
+        .weekly-layout { display: grid; grid-template-columns: minmax(280px, .85fr) 1.15fr; gap: 18px; }
+        .micro-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+        .micro-item { padding: 10px; border-radius: var(--radius-md); background: var(--text-inverse); border: 1px solid var(--border-light); font-family: var(--font-sans); }
+        .micro-top { display: flex; justify-content: space-between; gap: 6px; font-size: .72rem; }
+        .micro-status { color: var(--color-gold-deep); }
+        .micro-status.good { color: var(--color-mint-deep); }
+        .report-copy { padding: 4px 0; font: .8rem/1.7 var(--font-sans); color: var(--text-secondary); }
+        .report-copy ul { padding-left: 18px; margin: 8px 0; }
+        .disclaimer { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border-light); color: var(--text-muted); font: .68rem/1.5 var(--font-sans); }
+
+        .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group.full { grid-column: 1 / -1; }
+        .form-group label { color: var(--text-secondary); font: .75rem var(--font-sans); }
+        .form-input {
+            width: 100%; padding: 10px 11px; border: 1px solid var(--border-light);
+            border-radius: var(--radius-md); background: var(--text-inverse); color: var(--text-primary);
+            font: .85rem var(--font-sans); outline: none;
+        }
+        .form-input:focus { border-color: var(--color-water-deep); box-shadow: 0 0 0 3px var(--color-water-light); }
+        .library-search { margin-bottom: 10px; }
+        .library-list { max-height: 270px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .library-item { display: grid; grid-template-columns: minmax(0, 1fr) 65px 68px; gap: 8px; align-items: center; padding: 9px; border: 1px solid var(--border-light); border-radius: var(--radius-md); font: .76rem var(--font-sans); }
+        .library-item small { display: block; color: var(--text-muted); margin-top: 2px; }
+        .library-item input { width: 65px; padding: 6px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+        .inline-notice { margin-bottom: 12px; padding: 9px 11px; border-radius: var(--radius-md); background: var(--color-water-light); color: var(--text-secondary); font: .75rem/1.5 var(--font-sans); }
+
+        @media (max-width: 1050px) {
+            .meal-workbench { grid-template-columns: 1fr; }
+            .upload-zone { min-height: 170px; }
+        }
+        @media (max-width: 768px) {
+            body .main-content { width: 100%; }
+            .nutrition-page { width: 100%; }
+            .nutrition-header { gap: 12px; }
+            .header-actions { width: 100%; flex-wrap: wrap; }
+            .date-control { flex: 1; }
+            .date-control input { flex: 1; width: auto; }
+            .nutrition-grid, .lower-grid { grid-template-columns: 1fr; }
+            .nutrition-card { padding: 16px; }
+            .meal-workbench { grid-template-columns: 1fr; }
+            .upload-zone { min-height: 160px; }
+            .calorie-overview { grid-template-columns: 108px 1fr; }
+            .calorie-ring { width: 108px; height: 108px; }
+            .calorie-ring::after { width: 82px; height: 82px; }
+            .exercise-card { grid-template-columns: auto 1fr; }
+            .exercise-card .soft-btn { grid-column: 1 / -1; width: 100%; }
+            .lower-grid { margin-top: 14px; }
+            .weekly-layout { grid-template-columns: 1fr; }
+            .record-row { grid-template-columns: 48px minmax(0, 1fr) 74px 28px; gap: 7px; padding: 10px 8px; }
+            .weekly-chart { height: 165px; }
+            .bar-pair { height: 125px; }
+            .form-grid { grid-template-columns: 1fr; }
+            .form-group.full { grid-column: auto; }
+            .modal-actions { position: sticky; bottom: 0; background: var(--bg-card); padding-top: 10px; }
+        }
+        @media (max-width: 420px) {
+            .header-actions .soft-btn { flex: 1; }
+            .food-row { grid-template-columns: minmax(70px, 1fr) 62px 52px 26px; font-size: .72rem; }
+            .micro-grid { grid-template-columns: 1fr 1fr; }
+            .record-meta { max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" v-cloak>
+        <sidebar active-page="nutrition"></sidebar>
+        <main class="main-content">
+            <div class="nutrition-page">
+                <header class="page-header nutrition-header">
+                    <div>
+                        <h2>AI 饮食</h2>
+                        <p class="header-subtitle">记录每一餐，也看见能量与营养的长期节奏</p>
+                    </div>
+                    <div class="header-actions">
+                        <div class="date-control">
+                            <button type="button" @click="shiftDate(-1)" aria-label="前一天">‹</button>
+                            <input type="date" v-model="currentDate" @change="loadDay">
+                            <button type="button" @click="shiftDate(1)" aria-label="后一天">›</button>
+                        </div>
+                        <button class="soft-btn" type="button" @click="showProfile = true">⚙ 个人目标</button>
+                    </div>
+                </header>
+
+                <section class="nutrition-grid">
+                    <article class="nutrition-card">
+                        <div class="card-heading">
+                            <div>
+                                <h3>📷 记录这一餐</h3>
+                                <p class="card-kicker">AI 看图估算，或从本地食物库手动添加</p>
+                            </div>
+                            <span class="privacy-chip">🔒 图片不保存</span>
+                        </div>
+                        <div class="meal-type-tabs">
+                            <button v-for="type in mealTypes" :key="type" type="button" :class="{active: mealType === type}" @click="mealType = type">{{ type }}</button>
+                        </div>
+                        <div class="meal-workbench">
+                            <div class="upload-zone" :class="{'has-image': mealImage}">
+                                <img v-if="mealImage" :src="mealImage" alt="待分析的餐食预览">
+                                <input type="file" accept="image/*" @change="chooseMealImage" aria-label="选择餐食照片">
+                                <div class="upload-zone-content">
+                                    <div class="upload-icon">{{ mealImage ? '✨' : '🍽️' }}</div>
+                                    <div class="upload-title">{{ mealImage ? '照片已就绪' : '拖入或选择餐食照片' }}</div>
+                                    <div class="upload-hint">{{ mealImage ? '点击下方按钮开始 AI 分析' : '仅用于本次识别，不会写入本地或云端' }}</div>
+                                </div>
+                                <div class="upload-actions">
+                                    <button class="primary-btn" type="button" :disabled="!mealImage || analyzingMeal" @click.stop="analyzeMeal">{{ analyzingMeal ? '分析中…' : 'AI 分析' }}</button>
+                                    <button class="soft-btn" type="button" @click.stop="openFoodLibrary">手动添加</button>
+                                </div>
+                            </div>
+                            <div class="analysis-panel">
+                                <div v-if="!draftFoods.length" class="analysis-empty">
+                                    <div>
+                                        <div style="font-size:1.6rem">🪄</div>
+                                        <p>识别结果会在这里展开。<br>保存前可修改名称、份量和热量。</p>
+                                    </div>
+                                </div>
+                                <template v-else>
+                                    <div class="food-list">
+                                        <div v-for="(food, index) in draftFoods" :key="food.id" class="food-row">
+                                            <input v-model.trim="food.name" aria-label="食物名称">
+                                            <input v-model.number="food.amountG" type="number" min="1" @change="recalculateDraft(food)" aria-label="份量（克）">
+                                            <span class="food-kcal">{{ food.calories }} kcal</span>
+                                            <button class="danger-btn" type="button" @click="draftFoods.splice(index, 1)" aria-label="删除食物">×</button>
+                                        </div>
+                                    </div>
+                                    <div class="analysis-total">
+                                        <span>{{ draftFoods.length }} 种食物</span>
+                                        <strong>{{ draftTotals.calories }} kcal · 蛋白质 {{ draftTotals.proteinG }}g</strong>
+                                    </div>
+                                </template>
+                                <div class="analysis-actions">
+                                    <span class="analysis-message" :class="{'error-message': mealStatusError}">{{ mealStatus }}</span>
+                                    <button class="primary-btn" type="button" :disabled="!draftFoods.length || savingMeal" @click="saveMeal">{{ savingMeal ? '保存中…' : '保存饮食' }}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="nutrition-card">
+                        <div class="card-heading">
+                            <div>
+                                <h3>今日摄入</h3>
+                                <p class="card-kicker">{{ target ? target.method : '填写个人目标后计算建议摄入' }}</p>
+                            </div>
+                            <span v-if="profile" class="status-chip">{{ goalLabel }}</span>
+                        </div>
+                        <div v-if="target" class="calorie-overview">
+                            <div class="calorie-ring" :style="{'--progress': calorieDegrees + 'deg'}">
+                                <div class="ring-copy"><strong>{{ dayTotals.calories }}</strong><span>/ {{ target.calories }} kcal</span></div>
+                            </div>
+                            <div class="calorie-lines">
+                                <div class="calorie-line"><span>推荐摄入</span><strong>{{ target.calories }} kcal</strong></div>
+                                <div class="calorie-line"><span>运动消耗</span><strong>{{ exerciseBurn }} kcal</strong></div>
+                                <div class="calorie-line"><span>距目标</span><strong>{{ calorieRemaining }} kcal</strong></div>
+                            </div>
+                        </div>
+                        <div v-else class="target-empty">
+                            完善性别、年龄、身高、体重、活动水平与目标，即可获得基于 Mifflin–St Jeor 公式的每日建议。
+                            <div style="margin-top:12px"><button class="primary-btn" type="button" @click="showProfile = true">设置个人目标</button></div>
+                        </div>
+                        <div v-if="target" class="macro-list">
+                            <div v-for="macro in macros" :key="macro.key" class="macro-item">
+                                <div class="macro-header"><span>{{ macro.label }}</span><span>{{ macro.actual }} / {{ macro.target }}g</span></div>
+                                <div class="progress-track"><div class="progress-fill" :style="{width: macro.progress + '%'}"></div></div>
+                            </div>
+                        </div>
+                    </article>
+
+                    <article class="nutrition-card exercise-card">
+                        <div class="exercise-icon">🏃</div>
+                        <div class="exercise-summary">
+                            <strong>今日运动 {{ exerciseBurn }} kcal</strong>
+                            <span v-if="exercises.length">{{ exerciseSummary }}</span>
+                            <span v-else>可识别运动截图，也可手动记录类型、时长和消耗</span>
+                        </div>
+                        <button class="soft-btn" type="button" @click="openExercise">+ 记录运动</button>
+                    </article>
+                </section>
+
+                <section class="lower-grid">
+                    <article class="nutrition-card">
+                        <div class="card-heading">
+                            <div><h3>餐食记录</h3><p class="card-kicker">{{ currentDate }} · {{ meals.length }} 餐</p></div>
+                        </div>
+                        <div v-if="meals.length" class="record-list">
+                            <div v-for="meal in meals" :key="meal.id" class="record-row">
+                                <span class="meal-badge">{{ meal.mealType }}</span>
+                                <div class="record-main">
+                                    <div class="record-title">{{ meal.foods.map(food => food.name).join('、') }}</div>
+                                    <div class="record-meta"><span class="source-chip" :class="meal.source">{{ meal.source === 'ai' ? 'AI 估算' : '手动记录' }}</span> · 蛋白质 {{ meal.totals.proteinG }}g</div>
+                                </div>
+                                <div class="record-kcal">{{ meal.totals.calories }} kcal</div>
+                                <button class="danger-btn" type="button" @click="removeRecord(meal.id)" aria-label="删除餐食">×</button>
+                            </div>
+                        </div>
+                        <div v-else class="empty-records">今天还没有餐食记录，从上方添加第一餐吧。</div>
+                    </article>
+
+                    <article class="nutrition-card">
+                        <div class="card-heading">
+                            <div><h3>近 7 日能量</h3><p class="card-kicker">摄入与运动消耗趋势</p></div>
+                            <div class="chart-legend"><span><i class="legend-dot intake"></i>摄入</span><span><i class="legend-dot burn"></i>运动</span></div>
+                        </div>
+                        <div class="weekly-chart">
+                            <div v-for="day in chartDays" :key="day.date" class="chart-day">
+                                <div class="bar-pair">
+                                    <div class="chart-bar" :style="{height: day.intakeHeight + '%'}" :title="day.intake + ' kcal'"></div>
+                                    <div class="chart-bar burn" :style="{height: day.burnHeight + '%'}" :title="day.burn + ' kcal'"></div>
+                                </div>
+                                <span class="chart-label">{{ day.label }}</span>
+                            </div>
+                        </div>
+                    </article>
+                </section>
+
+                <section class="nutrition-card weekly-report">
+                    <div class="card-heading">
+                        <div>
+                            <h3>🌿 每周营养复盘</h3>
+                            <p class="card-kicker">{{ reportRange.start }} — {{ reportRange.end }} · {{ weeklyReport ? weeklyReport.mealCount : 0 }} 条记录</p>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center">
+                            <span v-if="weeklyReport" class="source-chip" :class="weeklyReport.source">{{ weeklyReport.source === 'ai' ? 'AI 周报' : '本地周报' }}</span>
+                            <button class="soft-btn" type="button" :disabled="generatingReport" @click="generateReport(true)">{{ generatingReport ? '生成中…' : '重新生成' }}</button>
+                        </div>
+                    </div>
+                    <div v-if="weeklyReport" class="weekly-layout">
+                        <div class="micro-grid">
+                            <div v-for="item in nutrientCards" :key="item.key" class="micro-item">
+                                <div class="micro-top"><strong>{{ item.label }}</strong><span class="micro-status" :class="{good: item.status === '充足'}">{{ item.status }}</span></div>
+                                <div class="macro-header" style="margin-top:8px"><span>{{ item.total }}{{ item.unit }}</span><span>{{ item.percent }}%</span></div>
+                                <div class="progress-track"><div class="progress-fill" :style="{width: Math.min(item.percent, 100) + '%'}"></div></div>
+                            </div>
+                        </div>
+                        <div class="report-copy">
+                            <strong>{{ weeklyReport.summary || '本周记录洞察' }}</strong>
+                            <ul><li v-for="tip in weeklyReport.suggestions" :key="tip">{{ tip }}</li></ul>
+                            <div class="disclaimer">{{ weeklyReport.disclaimer }}</div>
+                        </div>
+                    </div>
+                    <div v-else class="empty-records">周报将在上一自然周结束后自动生成；没有 AI 配置时会使用本地规则。</div>
+                </section>
+            </div>
+        </main>
+
+        <div v-if="showFoodLibrary" class="modal-overlay" @click.self="showFoodLibrary = false">
+            <div class="modal">
+                <h3>从本地食物库添加</h3>
+                <p class="modal-desc">营养数据按每 100g 估算，可在保存前继续调整。</p>
+                <input class="form-input library-search" v-model.trim="foodSearch" placeholder="搜索米饭、鸡胸、苹果…">
+                <div class="library-list">
+                    <div v-for="food in filteredFoods" :key="food.id" class="library-item">
+                        <div><strong>{{ food.name }}</strong><small>{{ food.category }} · {{ food.per100g.calories }} kcal/100g</small></div>
+                        <input v-model.number="food.amountG" type="number" min="1" aria-label="克数">
+                        <button class="soft-btn" type="button" @click="addLibraryFood(food)">添加</button>
+                    </div>
+                </div>
+                <div class="modal-actions"><button class="btn-secondary" type="button" @click="showFoodLibrary = false">完成</button></div>
+            </div>
+        </div>
+
+        <div v-if="showExercise" class="modal-overlay" @click.self="showExercise = false">
+            <div class="modal">
+                <h3>记录运动</h3>
+                <p class="modal-desc">上传运动 App 截图进行识别，或直接填写。截图不会保存。</p>
+                <div class="inline-notice">🔒 只有结构化的运动类型、时长和消耗会写入数据。</div>
+                <div class="form-grid">
+                    <div class="form-group full">
+                        <label>运动截图（可选）</label>
+                        <input class="form-input" type="file" accept="image/*" @change="chooseExerciseImage">
+                    </div>
+                    <div class="form-group full" v-if="exerciseImage">
+                        <button class="soft-btn" type="button" :disabled="analyzingExercise" @click="analyzeExercise">{{ analyzingExercise ? '识别中…' : 'AI 识别截图' }}</button>
+                    </div>
+                    <div class="form-group"><label>运动类型</label><input class="form-input" v-model.trim="exerciseForm.type" placeholder="跑步"></div>
+                    <div class="form-group"><label>时长（分钟）</label><input class="form-input" v-model.number="exerciseForm.durationMin" type="number" min="0"></div>
+                    <div class="form-group"><label>消耗（kcal）</label><input class="form-input" v-model.number="exerciseForm.caloriesBurned" type="number" min="0"></div>
+                    <div class="form-group"><label>距离（km，可选）</label><input class="form-input" v-model.number="exerciseForm.distanceKm" type="number" min="0" step="0.1"></div>
+                </div>
+                <p class="analysis-message" :class="{'error-message': exerciseStatusError}">{{ exerciseStatus }}</p>
+                <div class="modal-actions">
+                    <button class="btn-secondary" type="button" @click="showExercise = false">取消</button>
+                    <button class="primary-btn" type="button" @click="saveExercise">保存运动</button>
+                </div>
+            </div>
+        </div>
+
+        <div v-if="showProfile" class="modal-overlay" @click.self="showProfile = false">
+            <div class="modal">
+                <h3>个人目标</h3>
+                <p class="modal-desc">用于估算基础代谢和每日宏量营养建议。所有信息保存在你的 LifeOS 数据中。</p>
+                <div class="form-grid">
+                    <div class="form-group"><label>性别（公式参数）</label><select class="form-input" v-model="profileForm.sex"><option value="female">女性</option><option value="male">男性</option></select></div>
+                    <div class="form-group"><label>年龄</label><input class="form-input" v-model.number="profileForm.age" type="number" min="13" max="100"></div>
+                    <div class="form-group"><label>身高（cm）</label><input class="form-input" v-model.number="profileForm.heightCm" type="number" min="100" max="250"></div>
+                    <div class="form-group"><label>体重（kg）</label><input class="form-input" v-model.number="profileForm.weightKg" type="number" min="25" max="400" step="0.1"></div>
+                    <div class="form-group full"><label>日常活动水平</label><select class="form-input" v-model="profileForm.activityLevel"><option value="sedentary">久坐（很少运动）</option><option value="light">轻度（每周 1–3 次）</option><option value="moderate">中度（每周 3–5 次）</option><option value="active">活跃（每周 6–7 次）</option><option value="veryActive">高强度活动</option></select></div>
+                    <div class="form-group full"><label>当前目标</label><select class="form-input" v-model="profileForm.goal"><option value="lose">减脂（温和热量缺口）</option><option value="maintain">维持</option><option value="gain">增肌/增重（温和热量盈余）</option></select></div>
+                </div>
+                <div class="disclaimer">这是生活管理估算，不适用于未成年人、孕期、疾病治疗或饮食障碍管理等需要专业评估的情形。</div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" type="button" @click="showProfile = false">取消</button>
+                    <button class="primary-btn" type="button" @click="saveProfile">保存目标</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        const Sidebar = {
+            props: { activePage: { type: String, default: 'nutrition' } },
+            setup(props) {
+                const sidebarCollapsed = ref(false);
+                const navItems = [
+                    { id: 'dashboard', name: '仪表盘', url: 'index.html', icon: '📊' },
+                    { id: 'timeline', name: '时间轴', url: 'timeline.html', icon: '⏱' },
+                    { id: 'tasks', name: '任务', url: 'tasks.html', icon: '📋' },
+                    { id: 'habits', name: '习惯', url: 'habits.html', icon: '✓' },
+                    { id: 'nutrition', name: 'AI 饮食', url: 'nutrition.html', icon: '🥗' },
+                    { id: 'review', name: '回顾', url: 'review.html', icon: '📝' },
+                    { id: 'learning', name: '学习', url: 'learning.html', icon: '🎓' },
+                    { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤' },
+                    { id: 'settings', name: '设置', url: 'settings.html', icon: '⚙️' }
+                ];
+                const activeNavItems = computed(() => navItems.map(item => ({ ...item, active: item.id === props.activePage })));
+                const today = computed(() => new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }));
+                return { sidebarCollapsed, activeNavItems, today };
+            },
+            template: `
+                <aside class="sidebar" :class="{'collapsed': sidebarCollapsed}">
+                    <div class="sidebar-header">
+                        <h1 class="app-title" v-show="!sidebarCollapsed">Life OS</h1>
+                        <span class="app-title-collapsed" v-show="sidebarCollapsed">L</span>
+                        <button class="toggle-btn" type="button" @click="sidebarCollapsed = !sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button>
+                    </div>
+                    <nav class="sidebar-nav" aria-label="主导航">
+                        <a v-for="item in activeNavItems" :key="item.id" :href="item.url" :class="['nav-item', {'active': item.active}]">
+                            <span class="nav-icon" aria-hidden="true">{{ item.icon }}</span>
+                            <span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span>
+                        </a>
+                    </nav>
+                    <div class="sidebar-timeline" v-show="!sidebarCollapsed">
+                        <h3>今日节奏</h3><div class="timeline-preview"><p>{{ today }}</p><p class="hint">认真吃饭，也是照顾自己。</p></div>
+                    </div>
+                </aside>`
+        };
+
+        LifeOS.Sync.init();
+        createApp({
+            components: { Sidebar },
+            setup() {
+                const Engine = LifeOS.NutritionEngine;
+                const Nutrition = LifeOS.Nutrition;
+                const currentDate = ref(LifeOS.Utils.formatDate());
+                const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
+                const mealType = ref('午餐');
+                const mealImage = ref('');
+                const mealStatus = ref('');
+                const mealStatusError = ref(false);
+                const analyzingMeal = ref(false);
+                const savingMeal = ref(false);
+                const draftFoods = ref([]);
+                const meals = ref([]);
+                const exercises = ref([]);
+                const foodLibrary = ref([]);
+                const foodSearch = ref('');
+                const showFoodLibrary = ref(false);
+                const showExercise = ref(false);
+                const showProfile = ref(false);
+                const exerciseImage = ref('');
+                const analyzingExercise = ref(false);
+                const exerciseStatus = ref('');
+                const exerciseStatusError = ref(false);
+                const exerciseForm = ref({ type: '', durationMin: 30, caloriesBurned: 0, distanceKm: 0, source: 'manual' });
+                const profile = ref(null);
+                const profileForm = ref({ sex: 'female', age: 25, heightCm: 165, weightKg: 55, activityLevel: 'light', goal: 'maintain' });
+                const chartDays = ref([]);
+                const averageExercise = ref(0);
+                const weeklyReport = ref(null);
+                const reportRange = ref(Engine.previousWeek(currentDate.value));
+                const generatingReport = ref(false);
+
+                const draftTotals = computed(() => Engine.sumFoods(draftFoods.value));
+                const dayTotals = computed(() => Engine.aggregateMeals(meals.value));
+                const exerciseBurn = computed(() => Engine.aggregateExercise(exercises.value));
+                const target = computed(() => Engine.calculateTargets(profile.value, exerciseBurn.value, averageExercise.value));
+                const calorieDegrees = computed(() => target.value ? Math.min(dayTotals.value.calories / target.value.calories, 1) * 360 : 0);
+                const calorieRemaining = computed(() => target.value ? Math.round(target.value.calories - dayTotals.value.calories) : 0);
+                const macros = computed(() => {
+                    if (!target.value) return [];
+                    return [
+                        { key: 'carbsG', label: '碳水化合物', actual: dayTotals.value.carbsG, target: target.value.carbsG },
+                        { key: 'proteinG', label: '蛋白质', actual: dayTotals.value.proteinG, target: target.value.proteinG },
+                        { key: 'fatG', label: '脂肪', actual: dayTotals.value.fatG, target: target.value.fatG }
+                    ].map(item => ({ ...item, progress: Math.min(100, Math.round(item.actual / Math.max(item.target, 1) * 100)) }));
+                });
+                const goalLabel = computed(() => ({ lose: '减脂目标', maintain: '维持目标', gain: '增肌目标' }[profile.value && profile.value.goal] || '个人目标'));
+                const exerciseSummary = computed(() => exercises.value.map(item => `${item.type} ${item.durationMin || 0} 分钟`).join(' · '));
+                const filteredFoods = computed(() => {
+                    const query = foodSearch.value.toLowerCase();
+                    const source = query ? foodLibrary.value.filter(food => {
+                        return [food.name, food.category].concat(food.aliases || []).join(' ').toLowerCase().includes(query);
+                    }) : foodLibrary.value;
+                    return source.slice(0, 30);
+                });
+                const nutrientCards = computed(() => {
+                    if (!weeklyReport.value || !weeklyReport.value.nutrients) return [];
+                    return Object.keys(weeklyReport.value.nutrients).map(key => {
+                        const item = weeklyReport.value.nutrients[key];
+                        return { key, ...item, percent: Math.round((item.ratio || 0) * 100) };
+                    });
+                });
+
+                async function loadFoodLibrary() {
+                    const response = await fetch('data/food-nutrition.json');
+                    const data = await response.json();
+                    foodLibrary.value = (data.foods || []).map(food => ({ ...food, amountG: 100 }));
+                }
+
+                async function loadDay() {
+                    const data = await Nutrition.getByDate(currentDate.value);
+                    meals.value = data.meals;
+                    exercises.value = data.exercises;
+                    await loadChart();
+                }
+
+                function shiftDate(amount) {
+                    currentDate.value = Engine.addDays(currentDate.value, amount);
+                    loadDay();
+                }
+
+                async function fileToCompressedDataUrl(file) {
+                    if (!file) return '';
+                    if (!file.type.startsWith('image/')) throw new Error('请选择图片文件');
+                    if (file.size > 15 * 1024 * 1024) throw new Error('图片不能超过 15MB');
+                    const base64 = await LifeOS.Utils.fileToBase64(file);
+                    return LifeOS.Utils.compressImage(base64, 1400, 0.78);
+                }
+
+                async function chooseMealImage(event) {
+                    try {
+                        mealImage.value = await fileToCompressedDataUrl(event.target.files[0]);
+                        mealStatus.value = '图片仅保存在当前页面内存中。';
+                        mealStatusError.value = false;
+                    } catch (error) {
+                        mealStatus.value = error.message;
+                        mealStatusError.value = true;
+                    }
+                }
+
+                async function analyzeMeal() {
+                    analyzingMeal.value = true;
+                    mealStatus.value = '正在识别食物与份量…';
+                    mealStatusError.value = false;
+                    try {
+                        const result = await Nutrition.analyzeMealPhoto(mealImage.value, mealType.value);
+                        draftFoods.value = result.foods;
+                        mealStatus.value = result.summary;
+                    } catch (error) {
+                        mealStatus.value = error.message + '；你仍可使用本地食物库。';
+                        mealStatusError.value = true;
+                    } finally {
+                        analyzingMeal.value = false;
+                    }
+                }
+
+                function openFoodLibrary() {
+                    showFoodLibrary.value = true;
+                    foodSearch.value = '';
+                }
+
+                function addLibraryFood(food) {
+                    draftFoods.value.push(Engine.scaleFood(food, food.amountG || 100));
+                    mealStatus.value = '已添加本地估算，可继续搜索或直接保存。';
+                    mealStatusError.value = false;
+                }
+
+                function recalculateDraft(food) {
+                    if (!food.amountG || !food._per100g) return;
+                    Object.assign(food, Engine.scaleFood({ id: food.id, name: food.name, per100g: food._per100g }, food.amountG));
+                }
+
+                async function saveMeal() {
+                    savingMeal.value = true;
+                    try {
+                        await Nutrition.saveMeal({
+                            date: currentDate.value,
+                            mealType: mealType.value,
+                            foods: draftFoods.value,
+                            source: mealImage.value ? 'ai' : 'manual'
+                        });
+                        draftFoods.value = [];
+                        mealImage.value = '';
+                        mealStatus.value = '已保存结构化营养数据，原始图片未保存。';
+                        mealStatusError.value = false;
+                        await loadDay();
+                    } catch (error) {
+                        mealStatus.value = error.message;
+                        mealStatusError.value = true;
+                    } finally {
+                        savingMeal.value = false;
+                    }
+                }
+
+                function openExercise() {
+                    exerciseImage.value = '';
+                    exerciseStatus.value = '';
+                    exerciseStatusError.value = false;
+                    exerciseForm.value = { type: '', durationMin: 30, caloriesBurned: 0, distanceKm: 0, source: 'manual' };
+                    showExercise.value = true;
+                }
+
+                async function chooseExerciseImage(event) {
+                    try {
+                        exerciseImage.value = await fileToCompressedDataUrl(event.target.files[0]);
+                        exerciseStatus.value = '截图已就绪，点击 AI 识别。';
+                    } catch (error) {
+                        exerciseStatus.value = error.message;
+                        exerciseStatusError.value = true;
+                    }
+                }
+
+                async function analyzeExercise() {
+                    analyzingExercise.value = true;
+                    exerciseStatusError.value = false;
+                    try {
+                        const result = await Nutrition.analyzeExerciseScreenshot(exerciseImage.value);
+                        exerciseForm.value = { ...result, source: 'ai' };
+                        exerciseStatus.value = '识别完成，请核对后保存。';
+                    } catch (error) {
+                        exerciseStatus.value = error.message + '；可直接手动填写。';
+                        exerciseStatusError.value = true;
+                    } finally {
+                        analyzingExercise.value = false;
+                    }
+                }
+
+                async function saveExercise() {
+                    if (!exerciseForm.value.type || !Number(exerciseForm.value.caloriesBurned)) {
+                        exerciseStatus.value = '请填写运动类型和消耗热量。';
+                        exerciseStatusError.value = true;
+                        return;
+                    }
+                    await Nutrition.saveExercise({ ...exerciseForm.value, date: currentDate.value });
+                    exerciseImage.value = '';
+                    showExercise.value = false;
+                    await loadDay();
+                }
+
+                async function saveProfile() {
+                    profile.value = await Nutrition.saveProfile(profileForm.value);
+                    showProfile.value = false;
+                    await loadChart();
+                }
+
+                async function removeRecord(id) {
+                    if (!confirm('删除这条记录？删除会同步到其他设备。')) return;
+                    await Nutrition.deleteRecord(id);
+                    await loadDay();
+                }
+
+                async function loadChart() {
+                    const start = Engine.addDays(currentDate.value, -6);
+                    const rangeMeals = await Nutrition.getMealsInRange(start, currentDate.value);
+                    const rangeExercises = await Nutrition.getExercisesInRange(start, currentDate.value);
+                    const days = [];
+                    let maxValue = 1;
+                    for (let offset = 0; offset < 7; offset++) {
+                        const date = Engine.addDays(start, offset);
+                        const intake = Engine.aggregateMeals(rangeMeals.filter(item => item.date === date)).calories;
+                        const burn = Engine.aggregateExercise(rangeExercises.filter(item => item.date === date));
+                        maxValue = Math.max(maxValue, intake, burn);
+                        days.push({ date, intake, burn, label: `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}` });
+                    }
+                    chartDays.value = days.map(day => ({
+                        ...day,
+                        intakeHeight: Math.max(2, Math.round(day.intake / maxValue * 100)),
+                        burnHeight: Math.max(2, Math.round(day.burn / maxValue * 100))
+                    }));
+                    averageExercise.value = Math.round(rangeExercises.reduce((sum, item) => sum + Number(item.caloriesBurned || 0), 0) / 7);
+                }
+
+                async function generateReport(force) {
+                    generatingReport.value = true;
+                    try {
+                        reportRange.value = Engine.previousWeek(LifeOS.Utils.formatDate());
+                        weeklyReport.value = await Nutrition.generateWeeklyReport(reportRange.value, { force: !!force, useAI: true });
+                    } finally {
+                        generatingReport.value = false;
+                    }
+                }
+
+                onMounted(async () => {
+                    await LifeOS.Database.init();
+                    await loadFoodLibrary();
+                    profile.value = await Nutrition.getProfile();
+                    if (profile.value) profileForm.value = { ...profile.value };
+                    await loadDay();
+                    await generateReport(false);
+                });
+
+                return {
+                    currentDate, mealTypes, mealType, mealImage, mealStatus, mealStatusError,
+                    analyzingMeal, savingMeal, draftFoods, draftTotals, meals, exercises,
+                    showFoodLibrary, foodSearch, filteredFoods, showExercise, exerciseImage,
+                    exerciseForm, exerciseStatus, exerciseStatusError, analyzingExercise,
+                    showProfile, profile, profileForm, dayTotals, exerciseBurn, target,
+                    calorieDegrees, calorieRemaining, macros, goalLabel, exerciseSummary,
+                    chartDays, weeklyReport, reportRange, generatingReport, nutrientCards,
+                    shiftDate, loadDay, chooseMealImage, analyzeMeal, openFoodLibrary,
+                    addLibraryFood, recalculateDraft, saveMeal, openExercise,
+                    chooseExerciseImage, analyzeExercise, saveExercise, saveProfile,
+                    removeRecord, generateReport
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

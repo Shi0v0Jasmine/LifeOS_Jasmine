@@ -38,9 +38,10 @@
 | `notes` | 学习笔记 |
 | `characters` | 角色库 |
 | `moments` | 特殊事件 |
+| `nutrition` | AI 饮食、运动、个人目标与每周营养复盘（v6.0.0） |
 | `devices` | 设备注册表（v5.0.0 设备管理，doc id 即 deviceId） |
 
-> 📷 截图位置：数据库集合列表，9 个集合全部创建完成的状态
+> 📷 截图位置：数据库集合列表，11 个集合全部创建完成的状态
 
 说明：集合无需预定义字段，LifeOS 写入的每条文档结构为：
 
@@ -93,11 +94,13 @@ LifeOS 通过 **匿名登录** 访问云数据库（单用户场景，无需注�
 
 > 📷 截图位置：安全规则编辑框，粘贴规则后点击「发布」
 
-注意：10 个集合都要配置。若安全规则未放开，`测试连接` 会报权限错误。
+注意：11 个集合都要配置。若安全规则未放开，`测试连接` 会报权限错误。
 
 > 也可用 CLI 建集合与配规则（v5.0.0 起 devices 集合即用此法创建）：
 > `tcb db nosql execute -c '[{"TableName":"devices","CommandType":"COMMAND","Command":"{\"create\":\"devices\"}"}]' -e <envId>`
 > `tcb api tcb ModifySafeRule --api-version 2018-06-08 --body '{"EnvId":"<envId>","CollectionName":"devices","AclTag":"CUSTOM","Rule":"{\"read\":\"auth != null\",\"write\":\"auth != null\"}"}'`
+>
+> v6.0.0 的 `nutrition` 集合使用同样命令创建，并将 `CollectionName` 改为 `nutrition`。
 
 ---
 

@@ -188,12 +188,12 @@
     // 1. 数据库核心 (Database)
     // ============================================================
     // 参与多端同步的业务 store（settings 为设备本地配置，不同步）
-    const SYNC_STORES = ['tasks', 'timeline', 'habits', 'habitRecords', 'reviews', 'skills', 'notes', 'characters', 'moments'];
+    const SYNC_STORES = ['tasks', 'timeline', 'habits', 'habitRecords', 'reviews', 'skills', 'notes', 'characters', 'moments', 'nutrition'];
 
     class Database {
         constructor() {
             this.dbName = 'LifeOSDB';
-            this.version = 3;
+            this.version = 4;
             this.db = null;
             this._initPromise = null;
             this._deviceIdPromise = null;
@@ -349,6 +349,13 @@
                 const s = db.createObjectStore('moments', { keyPath: 'id' });
                 s.createIndex('date', 'date', { unique: false });
                 s.createIndex('hashtag', 'hashtag', { unique: false, multiEntry: true });
+            }
+            // nutrition: AI 饮食、运动、用户目标与周报（v4）
+            if (!db.objectStoreNames.contains('nutrition')) {
+                const s = db.createObjectStore('nutrition', { keyPath: 'id' });
+                s.createIndex('kind', 'kind', { unique: false });
+                s.createIndex('date', 'date', { unique: false });
+                s.createIndex('weekStart', 'weekStart', { unique: false });
             }
             // v2 -> v3: 为所有业务 store 的旧记录补充同步字段（updatedAt / updatedBy / deletedAt）
             if (oldVersion < 3) {
@@ -2117,7 +2124,7 @@
                 const data = await resp.json();
                 if (!data || !data._meta) return false;
                 var storeNames = ['timeline','tasks','habits','habitRecords',
-                                  'reviews','skills','notes','characters','settings','moments'];
+                                  'reviews','skills','notes','characters','settings','moments','nutrition'];
                 var hasData = false;
                 for (var i = 0; i < storeNames.length; i++) {
                     if (Array.isArray(data[storeNames[i]]) && data[storeNames[i]].length > 0) { hasData = true; break; }

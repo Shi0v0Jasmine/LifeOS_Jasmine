@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.5.1`
-Latest released version: `5.5.1`（2026-07-28 发布，bug修复：自然语言拆任务 json_object 契约矛盾 + 解析兜底）
+Current source version: `6.0.0`
+Latest released version: `6.0.0`（2026-07-30 发布，全新 AI 饮食工作台：餐食/运动/目标/周报）
 
 版本号格式：
 
@@ -94,6 +94,7 @@ LifeOS 示例：
 | v5.4.1 | — | 2026-07-27 | v3 | 资源/文档：PWA 图标换为水彩手绘 LifeOS logo（PNG 192/512 + 圆角透明；apple-touch-icon 180 白底，9 页面加 link；manifest icons 改 PNG 提升 iOS 兼容）；user-manual 更新至 v5.4.0（网页版地址 + AND 主设备 + 功能速览）；README 全面更新至 v5.4.0 |
 | **v5.5.0** | — | **2026-07-27** | v3 | 小版本：起床/睡觉打卡（F-123）；timeline store 加 `sleepCheckIn`/`wakeCheckIn`（`category:'sleep'` + `sleepOpen`/`wakeOnly`，跨天 date 归起床日，重复打卡取最新）；时间轴日期栏两个打卡按钮 + 跨天睡眠块 00:00 起渲染 + 时长文案；类别加「睡眠」；新增 sleep-checkin 测试 3 项 |
 | v5.5.1 | — | 2026-07-28 | v3 | bug修复：自然语言拆任务「无法识别任务」——请求带 `response_format: json_object`（强制对象）而 prompt 要求裸数组且禁止对象包裹，契约矛盾致模型输出对象形态后解析抛错；plan/breakdown prompt 改 `{"tasks":[...]}`/`{"subtasks":[...]}` 契约，新增 `Utils._coerceTaskArray` 兜底（单任务对象/编号字典自动归一数组）；prompt 补编号逐项识别 + 时间点保留指令；ai-planner-parse 测试 6 → 8 项全绿 |
+| **v6.0.0** | — | **2026-07-30** | **v4** | 大版本：新增独立 `nutrition.html` AI 饮食工作台（F-048~F-055）；餐食照片/运动截图多模态识别且原图不持久化；39 种本地食物库与手动记录；Mifflin–St Jeor 热量目标（减脂/维持/增肌）；近 7 日摄入/运动图表；上一自然周自动营养复盘与离线降级；新增 nutrition 同步 store、Supabase 表、9 项专项测试与桌面/移动概念及视觉验收。 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
@@ -104,11 +105,12 @@ LifeOS 示例：
 | v1 | v1.0.0 | 初始 10 个 store | — |
 | v2 | v3.0.0 | tasks 增加 `parentId`/`isSubtask` 索引 | 自动，旧记录补字段 |
 | v3 | v4.0.0 | 业务记录补 `updatedAt`/`updatedBy`/`deletedAt` | 自动，遍历业务 store 补戳 |
+| v4 | v6.0.0 | 新增 `nutrition` store（kind/date/weekStart 索引） | 自动创建新 store，不改写旧业务记录 |
 
 ## 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ 更新本文件（Current source version + 版本历史 + DB 登记）
@@ -131,4 +133,4 @@ LifeOS 示例：
 | ~~v5.3.0~~ | ~~习惯度量与数据面板（F-120 打卡成果度量 / F-121 打卡图片 AI 解析 / F-122 习惯数据面板）~~ | ✅ 已发布 |
 | ~~v5.4.0~~ | ~~联动/统计/详情/月历 + v4.0.5/v4.2.0 补做（F-027/F-035/F-044/F-067）~~ | ✅ 已发布 |
 | ~~v5.5.0~~ | ~~起床/睡觉打卡（F-123，时间轴快捷打卡，间隔即睡眠时长）~~ | ✅ 已发布 |
-| v6.0.0 | 新主流程（待规划：如原生壳打包、协作/分享功能） | 大版本 |
+| ~~v6.0.0~~ | ~~AI 饮食独立工作台（F-048~F-055）~~ | ✅ 已发布 |

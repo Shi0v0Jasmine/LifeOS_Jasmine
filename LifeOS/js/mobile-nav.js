@@ -64,6 +64,8 @@
     function inject() {
         if (document.getElementById(BTN_ID)) return; // 幂等
 
+        injectNutritionLink();
+
         var btn = document.createElement('button');
         btn.id = BTN_ID;
         btn.type = 'button';
@@ -90,6 +92,31 @@
         });
 
         injectTabBar();
+    }
+
+    /*
+     * AI 饮食是独立工作台：桌面侧栏保持全站可达。
+     * 移动端仍保留原 8 个高频 Tab，AI 饮食通过汉堡菜单进入，避免底栏过载。
+     */
+    function injectNutritionLink() {
+        var nav = document.querySelector('.sidebar-nav');
+        if (!nav || nav.querySelector('a[href="nutrition.html"]')) return;
+
+        var page = currentPage();
+        var link = document.createElement('a');
+        link.href = 'nutrition.html';
+        link.className = 'nav-item' + (page === 'nutrition.html' ? ' active' : '');
+        link.setAttribute('data-nav-id', 'nutrition');
+        link.innerHTML = '<span class="nav-icon" aria-hidden="true">🥗</span><span class="nav-label">AI 饮食</span>';
+
+        var habits = nav.querySelector('a[href="habits.html"]');
+        if (habits && habits.nextSibling) {
+            nav.insertBefore(link, habits.nextSibling);
+        } else if (habits) {
+            nav.appendChild(link);
+        } else {
+            nav.appendChild(link);
+        }
     }
 
     /* v4.2.0 M1：底部 Tab Bar（仅 ≤768px 由 CSS 显示，桌面端不影响） */

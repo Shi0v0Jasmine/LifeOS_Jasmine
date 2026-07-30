@@ -381,7 +381,8 @@ async function testStoreTableMapping() {
         skills: 'skills',
         notes: 'notes',
         characters: 'characters',
-        moments: 'moments'
+        moments: 'moments',
+        nutrition: 'nutrition'
     }, 'store ↔ 表名映射应与设计文档一致');
 }
 

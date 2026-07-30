@@ -4,10 +4,10 @@
 --
 -- 使用方法：
 --   1. 在 Supabase 控制台创建项目（Region 建议选 Singapore）
---   2. 打开 SQL Editor，粘贴并执行本脚本（一次性建 9 张表）
+--   2. 打开 SQL Editor，粘贴并执行本脚本（一次性建 10 张业务表）
 --   3. 在 LifeOS 设置页 → 多端同步 填入 Project URL 和 anon public key
 --
--- 表结构说明（9 张表统一同构）：
+-- 表结构说明（10 张业务表统一同构）：
 --   id         text        主键 —— 本地 IndexedDB 记录的主键
 --                          （reviews 表的 id 即复盘日期 yyyy-MM-dd）
 --   data       jsonb       完整记录 JSON（含 updatedAt/updatedBy/deletedAt）
@@ -106,6 +106,16 @@ create table if not exists moments (
 );
 create index if not exists moments_updated_at_idx on moments (updated_at);
 
+-- nutrition：AI 饮食、运动、个人目标与每周营养复盘（v6.0.0）
+create table if not exists nutrition (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null,
+  updated_by text,
+  deleted_at timestamptz
+);
+create index if not exists nutrition_updated_at_idx on nutrition (updated_at);
+
 -- devices：设备注册表（v5.0.0 设备管理 F-109~F-112）
 -- id 即 deviceId；data 为 { deviceId, name, userAgent, firstSeenAt, lastSeenAt,
 -- isMaster, status('active'|'sleeping'|'revoked'), appVersion }
@@ -135,8 +145,8 @@ create index if not exists devices_updated_at_idx on devices (updated_at);
 --     using (true)
 --     with check (true);
 --
---   对其余 8 张表（timeline / habits / habit_records / reviews /
---   skills / notes / characters / moments）重复同样两条语句即可。
+--   对其余业务表（timeline / habits / habit_records / reviews /
+--   skills / notes / characters / moments / nutrition）重复同样两条语句即可。
 --
 --   注意：若启用 RLS 但未配策略，anon key 将被拒绝所有访问，
 --   LifeOS 同步会全部失败（HTTP 401/403）。
