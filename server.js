@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname, 'LifeOS')));
 
 function emptyDB() {
     return {
-        _meta: { app: 'LifeOS', version: '6.0.0', createdAt: new Date().toISOString() },
+        _meta: { app: 'LifeOS', version: '6.0.1', createdAt: new Date().toISOString() },
         timeline: [], tasks: [], habits: [], habitRecords: [],
         reviews: [], skills: [], notes: [], characters: [],
         settings: [], moments: [], nutrition: []

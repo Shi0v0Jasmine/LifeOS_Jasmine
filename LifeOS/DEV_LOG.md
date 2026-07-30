@@ -1,10 +1,18 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v6.0.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v6.0.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-07-30】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
+
+---
+
+## v6.0.1 — AI 饮食窄桌面响应式修复（2026-07-30）
+
+- 修复约 769–1050px 视口（尤其 1.5× 高 DPI 下的窄窗口）仍保留双栏，导致左侧餐食卡片被 `minmax(320px, .8fr)` 挤压成逐字换行的问题。
+- 该区间改为单列 `nutrition-grid` / `lower-grid`，页头和操作区允许换行，周报同步切为单列；≤768px 的移动端导航与底部 Tab 行为保持不变。
+- Service Worker 静态缓存升级为 `lifeos-static-v20260730-2`。
 
 ---
 
