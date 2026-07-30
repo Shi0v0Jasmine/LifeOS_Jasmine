@@ -36,7 +36,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
 │   ├── habit-metrics.test.js    ← 习惯度量/AI 解析/数据面板聚合（5 项）
 │   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
-│   └── ai-planner-parse.test.js ← AI 规划解析（5/6 项，纯对象无数组为设计预期）
+│   └── ai-planner-parse.test.js ← AI 规划解析（8 项）
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
     ├── index.html               ← Dashboard 首页
     ├── timeline.html            ← 时间轴
@@ -137,7 +137,7 @@ node tests/sync-merge.test.js     # 同步引擎（29 项）
 node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
 node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项）
 node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
-node tests/ai-planner-parse.test.js  # AI 规划解析（5/6 项）
+node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 ```
 
 ### 本地运行
@@ -171,11 +171,11 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v5.5.0`（2026-07-27 发布）
+- **Current / Latest**：`v5.5.1`（2026-07-28 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v3
-- **SW 缓存版本**：`lifeos-static-v20260727-3`
+- **SW 缓存版本**：`lifeos-static-v20260728-1`
 
 ---
 
@@ -204,6 +204,8 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 4. **iOS Safari 小字号 date 输入框**：不渲染占位文字，需用 `type="text"` / `type="date"` 聚焦切换模式。
 5. **移动端弹窗裁剪**：`.modal` 需 `max-height: calc(100dvh - 40px)` + `overflow-y: auto`。
 6. **AI API CORS**：浏览器直连 `api.kimi.com` 会被拦截，必须经 CloudBase 云函数 `ai-proxy` 转发。
+7. **json_object 模式契约**：`AIClient` 请求带 `response_format: {type:'json_object'}`（上游强制输出 JSON 对象），prompt 必须要求返回对象（如 `{"tasks":[...]}`），禁止要求裸数组；解析统一走 `Utils._coerceTaskArray`（兼容单任务对象/编号字典）。
+8. **kimi-for-coding key 会过期**：`sk-kimi-` 开头的 key 有效期短（实测数小时），AI 功能突报 401「API Key invalid/expired」时先到设置页更新 key 再排查代码。
 
 ---
 

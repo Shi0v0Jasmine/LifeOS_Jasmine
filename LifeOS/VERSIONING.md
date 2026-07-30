@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `5.5.0`
-Latest released version: `5.5.0`（2026-07-27 发布，起床/睡觉打卡：时间轴快捷打卡，间隔即实际睡眠时长）
+Current source version: `5.5.1`
+Latest released version: `5.5.1`（2026-07-28 发布，bug修复：自然语言拆任务 json_object 契约矛盾 + 解析兜底）
 
 版本号格式：
 
@@ -93,6 +93,7 @@ LifeOS 示例：
 | **v5.4.0** | — | **2026-07-27** | v3 | 小版本：F-027 任务完成↔时间轴联动（事件 completed 字段双向同步）/ F-035 任务统计弹窗（周/月完成数+完成率+四象限分布）/ F-044 习惯详情弹窗（摘要+逐条历史可编辑）/ F-067 情绪月历+原因输入；补做 v4.0.5（冷启动 45s 超时 + pull 回声 push 跳过）与 v4.2.0（移动端底部 Tab Bar + 四象限 Tab + bottom sheet）；PRD 新增 F-123 睡眠打卡规划（v5.5） |
 | v5.4.1 | — | 2026-07-27 | v3 | 资源/文档：PWA 图标换为水彩手绘 LifeOS logo（PNG 192/512 + 圆角透明；apple-touch-icon 180 白底，9 页面加 link；manifest icons 改 PNG 提升 iOS 兼容）；user-manual 更新至 v5.4.0（网页版地址 + AND 主设备 + 功能速览）；README 全面更新至 v5.4.0 |
 | **v5.5.0** | — | **2026-07-27** | v3 | 小版本：起床/睡觉打卡（F-123）；timeline store 加 `sleepCheckIn`/`wakeCheckIn`（`category:'sleep'` + `sleepOpen`/`wakeOnly`，跨天 date 归起床日，重复打卡取最新）；时间轴日期栏两个打卡按钮 + 跨天睡眠块 00:00 起渲染 + 时长文案；类别加「睡眠」；新增 sleep-checkin 测试 3 项 |
+| v5.5.1 | — | 2026-07-28 | v3 | bug修复：自然语言拆任务「无法识别任务」——请求带 `response_format: json_object`（强制对象）而 prompt 要求裸数组且禁止对象包裹，契约矛盾致模型输出对象形态后解析抛错；plan/breakdown prompt 改 `{"tasks":[...]}`/`{"subtasks":[...]}` 契约，新增 `Utils._coerceTaskArray` 兜底（单任务对象/编号字典自动归一数组）；prompt 补编号逐项识别 + 时间点保留指令；ai-planner-parse 测试 6 → 8 项全绿 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 

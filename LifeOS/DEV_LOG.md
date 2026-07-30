@@ -827,6 +827,21 @@ node --check LifeOS/js/sync.js → OK
 | SW 缓存 | `v20260727-2` → `v20260727-3` |
 | 部署/校验 | core.js / timeline.html / style.css / sw.js 部署，curl 校验 ✅ |
 
+### 9.30 v5.5.1 自然语言拆任务修复：json_object 契约矛盾 + 解析兜底（2026-07-28）
+
+**背景**：用户用 9 条编号事项 prompt 生成任务直接报错。WebBridge 线上复现：当天 12:52 的调用 API 层成功（200，4054 tokens）但前端抛「AI 返回的任务计划格式不正确」；14:08 起持续 401（kimi-for-coding key 过期，用户已在设置页更新）。
+
+| 项目 | 内容 |
+|------|------|
+| 根因 | `AIClient.chat` 带 `response_format: {type:'json_object'}`（上游强制输出 JSON **对象**），而 plan/breakdown prompt 要求「直接返回裸数组、不要对象包裹」——契约矛盾。模型在 json_object 约束下输出单任务对象或 `{"1":{...}}` 编号字典，解析层 `_extractArrayFromJSON` 找不到数组 → 抛错（原测试「纯对象无数组 5/6 为设计预期」正是此雷） |
+| prompt 契约修正 | `core.js` `AIPlanner._buildPrompt`：plan 改要求返回 `{"tasks":[...]}` 对象、breakdown 改 `{"subtasks":[...]}`，与 json_object 模式对齐；示例输出同步改写；新增「带编号/换行逐项识别不漏项」「时间点（9点/11点）保留在 title/description」指令；deadline 无明确日期时为 null |
+| 解析兜底 | `core.js` `Utils` 新增 `_coerceTaskArray`：先走 `_extractArrayFromJSON` 找数组，失败则兼容两种对象化输出——单任务对象（有 title）自动包成单元素数组、编号/名称字典自动取 `Object.values`；`createPlanFromNaturalLanguage`/`breakdownTask` 均改走该方法 |
+| 测试 | `tests/ai-planner-parse.test.js` 同步新解析逻辑，用例 6 → 8（新增编号字典、「纯对象无数组」由预期失败翻转为兜底成功、非 JSON fallback 空计划）；7 套件全绿 |
+| 真机验证 | WebBridge 线上页面注入新 prompt+解析逻辑跑用户原 prompt（9 条编号事项）：**9/9 全识别**，「日语课作业（今天必完成）」deadline 正确落当日，时间点保留 ✅ |
+| SW 缓存 | `v20260727-3` → `v20260728-1` |
+| 部署/校验 | core.js / sw.js 单文件部署，curl 校验线上含 `_coerceTaskArray` 与新 SW 版本号 ✅ |
+| 配置问题（非代码 bug） | kimi-for-coding key（sk-kimi- 开头）会过期：12:52 可用、14:08 起 401。遇「生成计划失败：API Key invalid/expired」需到设置页更新 key |
+
 ### 9.7 与既有功能的关系
 
 - 本机 Express 后端（v1.2 `server.js` + `BackendSync`）继续保留作本机备份；云端同步与其并存互不影响

@@ -152,6 +152,22 @@
             return null;
         },
 
+        // 把 AI 返回的 JSON 强制归一为任务数组：
+        // 优先找数组字段；找不到时兼容 json_object 模式下模型的两种常见“对象化”输出——
+        // 单个任务对象（{title:...}）或编号/名称字典（{"1": {title:...}, ...}）
+        _coerceTaskArray(data) {
+            const arr = this._extractArrayFromJSON(data);
+            if (arr) return arr;
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+                if (typeof data.title === 'string' && data.title.trim()) return [data];
+                const values = Object.values(data).filter(v =>
+                    v && typeof v === 'object' && !Array.isArray(v) &&
+                    typeof v.title === 'string' && v.title.trim());
+                if (values.length) return values;
+            }
+            return null;
+        },
+
         markdownToHtml(markdown) {
             if (!markdown) return '';
             return markdown
@@ -1984,48 +2000,52 @@
     const AIPlanner = {
         _buildPrompt(type, params) {
             if (type === 'breakdown') {
-                return `你是一位任务规划助手。请根据以下任务标题和描述，将其拆分为合理的子任务列表。\n要求：\n- 返回 JSON 数组，每项包含 { title, deadline, note }，deadline 为 yyyy-MM-dd 格式，可为 null\n- 不要添加解释，只返回 JSON 数组\n- 子任务数量建议在 3-7 个\n任务标题：${params.title || ''}\n任务描述：${params.description || ''}`;
+                return `你是一位任务规划助手。请根据以下任务标题和描述，将其拆分为合理的子任务列表。\n要求：\n- 返回 JSON 对象 {"subtasks": [{ title, deadline, note }]}，deadline 为 yyyy-MM-dd 格式，可为 null\n- 不要添加解释，只返回该 JSON 对象\n- 子任务数量建议在 3-7 个\n任务标题：${params.title || ''}\n任务描述：${params.description || ''}`;
             }
             if (type === 'plan') {
                 const generateSubtasks = params.generateSubtasks ? '请为每个主任务生成具体的子任务。' : '不要生成子任务，只返回主任务列表。';
                 return `你是一位任务规划助手。用户用自然语言描述了一段时间内的多件事，请帮他拆分为多个主任务。
 要求：
-- 必须返回 JSON 数组，每项为 { title, description, deadline, subtasks: [{ title, deadline, note }] }
-- 不要返回对象包裹数组，不要返回 { tasks: [...] } 这种格式，直接返回数组
-- deadline 为 yyyy-MM-dd 格式
+- 必须返回一个 JSON 对象，格式为 {"tasks": [{ title, description, deadline, subtasks: [{ title, deadline, note }] }]}
+- 最外层必须是带 "tasks" 字段的对象，不要只返回裸数组，也不要只返回单个任务对象
+- deadline 为 yyyy-MM-dd 格式，没有明确日期时为 null
+- 输入中带编号或换行的每一项通常就是一个独立事项，逐项识别，不要漏项、不要合并不相关的事
 - 每天至少生成一个主任务；同一天内不同类别的事（生活、论文、外出、采购、社交）要拆成不同主任务，不要合并
 - 每个明确提到的事件（洗衣、写论文、买东西、搬家、拍照、机场等）都要单独成一个主任务
 - 如果某件事包含多个步骤，请把它作为主任务，并把步骤作为它的子任务（例如“写论文”作为主任务，拆大纲/确定用图/润色/跑图为子任务）
 - 同一事项不要拆到不同任务里
+- 事项里的时间点（如“9点”“11点”）保留在 title 或 description 中，不要丢弃
 - 主任务数量按用户需求合理分配，重要事项单独成任务
 - ${generateSubtasks}
-- 只返回 JSON 数组，不要 markdown，不要解释
+- 只返回该 JSON 对象，不要 markdown，不要解释
 
 示例输入：
 7.10 要洗衣服，步骤是打包、去洗衣店、确认烘干。7.11 要写论文，步骤是拆大纲、确定用图。
 
 示例输出：
-[
-  {
-    "title": "洗衣服",
-    "description": "",
-    "deadline": "2026-07-10",
-    "subtasks": [
-      {"title": "打包衣物", "deadline": "2026-07-10", "note": ""},
-      {"title": "送往洗衣店", "deadline": "2026-07-10", "note": ""},
-      {"title": "确认有烘干服务", "deadline": "2026-07-10", "note": ""}
-    ]
-  },
-  {
-    "title": "写论文",
-    "description": "",
-    "deadline": null,
-    "subtasks": [
-      {"title": "拆大纲", "deadline": null, "note": ""},
-      {"title": "确定用图", "deadline": null, "note": ""}
-    ]
-  }
-]
+{
+  "tasks": [
+    {
+      "title": "洗衣服",
+      "description": "",
+      "deadline": "2026-07-10",
+      "subtasks": [
+        {"title": "打包衣物", "deadline": "2026-07-10", "note": ""},
+        {"title": "送往洗衣店", "deadline": "2026-07-10", "note": ""},
+        {"title": "确认有烘干服务", "deadline": "2026-07-10", "note": ""}
+      ]
+    },
+    {
+      "title": "写论文",
+      "description": "",
+      "deadline": null,
+      "subtasks": [
+        {"title": "拆大纲", "deadline": null, "note": ""},
+        {"title": "确定用图", "deadline": null, "note": ""}
+      ]
+    }
+  ]
+}
 
 用户输入：${params.input || ''}
 当前日期：${params.today || Utils.formatDate()}
@@ -2040,7 +2060,7 @@
             const response = await AIClient.chat({ ...options, prompt, responseFormat: { type: 'json_object' } });
             const text = AIClient.extractText(response);
             const parsed = Utils.parseJSONSafe(text, []);
-            const result = Utils._extractArrayFromJSON(parsed) || parsed;
+            const result = Utils._coerceTaskArray(parsed);
             if (!Array.isArray(result)) throw new Error('AI 返回的子任务格式不正确');
             return result.map(item => ({
                 title: item.title || '',
@@ -2054,7 +2074,7 @@
             const response = await AIClient.chat({ ...options, prompt, responseFormat: { type: 'json_object' } });
             const text = AIClient.extractText(response);
             const parsed = Utils.parseJSONSafe(text, []);
-            const result = Utils._extractArrayFromJSON(parsed) || parsed;
+            const result = Utils._coerceTaskArray(parsed);
             if (!Array.isArray(result)) throw new Error('AI 返回的任务计划格式不正确');
             return result.map(item => ({
                 title: item.title || '',
