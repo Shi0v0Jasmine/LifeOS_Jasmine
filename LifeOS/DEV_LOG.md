@@ -1,10 +1,17 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v6.0.2（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v6.0.3（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-08-01】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
+
+---
+
+## v6.0.3 — 每日回顾移动端适配修复（2026-08-01）
+- 日期导航在所有移动端断点下改为三列网格：上一日 / 当前日期 / 下一日；日期输入与条件出现的「回到今天」按钮另起一行，避免控件最小宽度将页面撑成桌面布局并触发整体缩放。
+- 回顾容器补齐 `width: 100%`、`min-width: 0` 与 `box-sizing: border-box`，确保卡片、心情选择和输入框在窄屏内收缩。
+- Service Worker 静态缓存升级至 `lifeos-static-v20260801-2`。
 
 ---
 

@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'lifeos-static-v20260801-1';
+const STATIC_CACHE = 'lifeos-static-v20260801-2';
 const DATA_CACHE = 'lifeos-data-v20260730-1';
 const RUNTIME_CACHE = 'lifeos-runtime-v20260730-1';
 
