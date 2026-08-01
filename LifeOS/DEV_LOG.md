@@ -1,10 +1,17 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v6.0.1（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
-> **最后更新**: 【2026-07-30】
+> **当前版本**: v6.0.2（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **最后更新**: 【2026-08-01】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
+
+---
+
+## v6.0.2 — 移动端时间轴定位修复（2026-08-01）
+- 修复移动端时间轴将每个半小时格压缩至 30px 后，事件卡片仍按桌面 40px 槽高计算 `top` / `height`，导致如 09:15「起床」被绘制到约 12 点位置的问题。
+- `timeline.html` 的事件样式改用 `calc(... * var(--timeline-slot-height))`；`style.css` 在桌面端定义 40px、移动端覆盖为 30px，同一计算可随响应式断点实时生效。
+- Service Worker 静态缓存升级至 `lifeos-static-v20260801-1`；已部署 `timeline.html`、`css/style.css` 与 `sw.js` 到 CloudBase 静态托管，并只读复核当天 5 条云端时间轴记录均保留。
 
 ---
 

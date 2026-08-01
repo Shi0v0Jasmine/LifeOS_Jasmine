@@ -237,8 +237,9 @@
             .mobile-col-hidden { display: none; }
 
             /* 时间格压缩：槽高 40→30px；半小时标签隔行隐藏（整点仍可见，槽位仍可点击） */
-            .time-slot { height: 30px; }
-            .time-label { height: 30px; font-size: 0.62rem; }
+            .timeline-column { --timeline-slot-height: 30px; }
+            .time-slot { height: var(--timeline-slot-height); }
+            .time-label { height: var(--timeline-slot-height); font-size: 0.62rem; }
             .time-label:nth-child(even) { visibility: hidden; }
         }
     </style>
@@ -872,13 +873,11 @@
                 watch(currentDate, () => { statsCache.value = { day: null, week: null, month: null }; if (viewMode.value === 'stats') loadStats(); });
                 watch(viewMode, (v) => { if (v === 'stats') loadStats(); });
                 const timeSlots = ref([]);
-                const SLOT_HEIGHT = 40;
                 for (let h = 0; h < 24; h++) {
                     for (let m of [0, 30]) {
                         timeSlots.value.push({
                             time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
-                            hour: h, minute: m,
-                            top: (h * 2 + (m === 30 ? 1 : 0)) * SLOT_HEIGHT
+                            hour: h, minute: m
                         });
                     }
                 }
@@ -1146,15 +1145,15 @@
                     const end = parseTime(evt.endTime);
                     let duration = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
                     if (duration < 0) duration += 24 * 60;
-                    const top = (start.hour * 2 + (start.minute >= 30 ? 1 : 0)) * SLOT_HEIGHT + (start.minute % 30) / 30 * SLOT_HEIGHT;
-                    const height = Math.max(duration / 30 * SLOT_HEIGHT, 24);
+                    const topSlots = start.hour * 2 + start.minute / 30;
+                    const heightSlots = duration / 30;
                     const col = evt._column || 0;
                     const total = evt._totalColumns || 1;
                     const leftPercent = (col / total) * 100;
                     const widthPercent = 100 / total;
                     return {
-                        top: `${top}px`,
-                        height: `${height}px`,
+                        top: `calc(${topSlots} * var(--timeline-slot-height))`,
+                        height: `max(24px, calc(${heightSlots} * var(--timeline-slot-height)))`,
                         '--event-left': `${leftPercent}%`,
                         '--event-width': `calc(${widthPercent}% - 8px)`,
                         right: 'auto'

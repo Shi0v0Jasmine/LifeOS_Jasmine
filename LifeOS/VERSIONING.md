@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `6.0.1`
-Latest released version: `6.0.1`（2026-07-30 发布，修复 AI 饮食窄桌面/高 DPI 窗口下的双栏塌缩）
+Current source version: `6.0.2`
+Latest released version: `6.0.2`（2026-08-01 发布，修复移动端时间轴事件定位错位）
 
 版本号格式：
 
@@ -96,6 +96,7 @@ LifeOS 示例：
 | v5.5.1 | — | 2026-07-28 | v3 | bug修复：自然语言拆任务「无法识别任务」——请求带 `response_format: json_object`（强制对象）而 prompt 要求裸数组且禁止对象包裹，契约矛盾致模型输出对象形态后解析抛错；plan/breakdown prompt 改 `{"tasks":[...]}`/`{"subtasks":[...]}` 契约，新增 `Utils._coerceTaskArray` 兜底（单任务对象/编号字典自动归一数组）；prompt 补编号逐项识别 + 时间点保留指令；ai-planner-parse 测试 6 → 8 项全绿 |
 | **v6.0.0** | — | **2026-07-30** | **v4** | 大版本：新增独立 `nutrition.html` AI 饮食工作台（F-048~F-055）；餐食照片/运动截图多模态识别且原图不持久化；39 种本地食物库与手动记录；Mifflin–St Jeor 热量目标（减脂/维持/增肌）；近 7 日摄入/运动图表；上一自然周自动营养复盘与离线降级；新增 nutrition 同步 store、Supabase 表、9 项专项测试与桌面/移动概念及视觉验收。 |
 | v6.0.1 | — | 2026-07-30 | v4 | PATCH：AI 饮食在约 769–1050px（含高 DPI 窄窗口）改为单列卡片，页头与操作区可换行，修复双栏最小宽度挤压造成的逐字换行；SW 缓存升级至 `lifeos-static-v20260730-2`。 |
+| v6.0.2 | — | 2026-08-01 | v4 | PATCH：移动端时间轴事件卡片的 `top` / `height` 改为跟随 CSS 时间槽高变量，修复移动端 30px 槽高与桌面 40px JS 常量不一致导致的时间错位；SW 缓存升级至 `lifeos-static-v20260801-1`。 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
