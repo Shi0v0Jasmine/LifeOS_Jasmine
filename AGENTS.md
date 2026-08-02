@@ -1,7 +1,7 @@
 # LifeOS — Agent 上下文与项目约定
 
 > 本文件供 AI Agent 每次会话启动时读取，快速建立项目上下文。
-> 最后更新：2026-07-25
+> 最后更新：2026-08-01
 
 ---
 
@@ -30,20 +30,21 @@ D:\FUN_VibeCoding\LifeOS\
 │       ├── index.js             ← CloudBase 云函数：AI 请求代理（解浏览器 CORS）
 │       └── package.json
 ├── tests/
-│   ├── core-data.test.js        ← 数据层回归（10 项）
+│   ├── core-data.test.js        ← 数据层回归（11 项）
 │   ├── subtask.test.js          ← 子任务专项（9 项）
-│   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（29 项）
+│   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（35 项）
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
 │   ├── habit-metrics.test.js    ← 习惯度量/AI 解析/数据面板聚合（5 项）
 │   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
 │   ├── ai-planner-parse.test.js ← AI 规划解析（8 项）
-│   └── nutrition.test.js        ← AI 饮食/营养计算/隐私边界（9 项）
+│   ├── nutrition.test.js        ← 饮食/营养计算/隐私边界（9 项）
+│   └── health-report.test.js    ← 健康报告解析/趋势/隐私边界（8 项）
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
     ├── index.html               ← Dashboard 首页
     ├── timeline.html            ← 时间轴
     ├── tasks.html               ← 任务管理
     ├── habits.html              ← 习惯打卡
-    ├── nutrition.html           ← AI 饮食（餐食/运动/目标/周报）
+    ├── nutrition.html           ← 健康（报告/指标趋势/餐食/运动/目标/周报）
     ├── review.html              ← 每日回顾
     ├── learning.html            ← 学习日记
     ├── characters.html          ← 角色库
@@ -58,7 +59,8 @@ D:\FUN_VibeCoding\LifeOS\
     │   └── style.css            ← 全局样式（CSS 变量 + 水彩/玻璃拟态主题）
     ├── js/
     │   ├── core.js              ← 数据层：DAO + 预置角色 + AIClient/AIPlanner（79KB）
-    │   ├── nutrition.js         ← AI 饮食 DAO + 营养计算/解析引擎
+    │   ├── nutrition.js         ← 饮食/运动 DAO + 营养计算/解析引擎
+    │   ├── health-reports.js    ← 健康报告解析引擎 + 结构化档案 DAO
     │   ├── db.js                ← IndexedDB 底层封装
     │   ├── sync.js              ← 多端同步引擎（push/pull/LWW/冲突队列/设备管理/账号登录）
     │   ├── utils.js             ← 工具函数（日期/UUID/四象限/JSON 解析）
@@ -135,14 +137,15 @@ D:\FUN_VibeCoding\LifeOS\
 
 ```bash
 cd D:/FUN_VibeCoding/LifeOS
-node tests/core-data.test.js      # 数据层回归（10 项）
+node tests/core-data.test.js      # 数据层回归（11 项）
 node tests/subtask.test.js        # 子任务专项（9 项）
-node tests/sync-merge.test.js     # 同步引擎（29 项）
+node tests/sync-merge.test.js     # 同步引擎（35 项）
 node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
 node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项）
 node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
+node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
 ```
 
 ### 本地运行
@@ -176,18 +179,18 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v6.0.1`（2026-07-30 发布）
+- **Current / Latest**：`v6.1.0`（2026-08-01 发布）
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 版本**：v4
-- **SW 缓存版本**：`lifeos-static-v20260730-2`
+- **SW 缓存版本**：`lifeos-static-v20260801-3`
 
 ---
 
 ## 8. 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition / health-report
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ sw.js 缓存版本号 +1

@@ -20,7 +20,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── timeline.html            ← 时间轴管理
 │   ├── tasks.html               ← 任务管理（四象限 + 统计视图）
 │   ├── habits.html              ← 习惯打卡（计划/暂停/度量/数据面板）
-│   ├── nutrition.html           ← AI 饮食（餐食/运动/目标/周报）
+│   ├── nutrition.html           ← 健康（报告/指标趋势/餐食/运动/目标/周报）
 │   ├── review.html              ← 每日回顾（情绪月历 + GRAI）
 │   ├── learning.html            ← 学习日记 / 技能树
 │   ├── characters.html          ← 角色库
@@ -31,15 +31,17 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── css\style.css            ← 全局样式
 │   ├── js\                      ← 核心脚本
 │   │   ├── core.js              ← 数据层 DAO + AIClient/AIPlanner + HabitPlan
-│   │   ├── nutrition.js         ← AI 饮食 DAO + 营养计算/解析引擎
+│   │   ├── nutrition.js         ← 饮食/运动 DAO + 营养计算/解析引擎
+│   │   ├── health-reports.js    ← 健康报告 PDF/图片解析 + 结构化档案 DAO
 │   │   ├── sync.js              ← 多端同步引擎（push/pull/LWW/冲突/设备管理/账号）
 │   │   ├── mobile-nav.js        ← 移动端汉堡菜单 + 底部 Tab Bar 注入
 │   │   ├── pwa.js               ← PWA 注册与安装提示
 │   │   └── components\          ← Vue 组件（Sidebar）
 │   ├── data\                    ← 食物营养库 + 备份/本机 JSON（后两者 git 忽略）
+│   ├── vendor\                  ← PDF.js / heic2any / UTIF 本地解码依赖
 │   ├── assets\                  ← 静态资源（icons/ 含 PWA 图标 lifeos-app.svg）
 │   └── guide\                   ← 从零构建指南（Step 0-10）+ 架构设计文档
-├── tests\                       ← 数据层/同步/习惯/营养回归测试（8 套件）
+├── tests\                       ← 数据层/同步/习惯/营养/健康报告回归测试（9 套件）
 ├── cloud-functions\ai-proxy\    ← CloudBase 云函数：AI 请求代理（解 CORS）
 ├── server.js                    ← 本机 Express 后端（静态托管 + JSON 持久化 API）
 ├── start.bat                    ← Windows 一键启动
@@ -87,7 +89,7 @@ node server.js
 | **⏱️ 时间轴** | 预计/实际双列、任务拖拽排期、计时器、循环事件、任务完成联动（✓ 删除线） |
 | **📝 任务** | 四象限分类、子任务、AI 拆解、自然语言创建、📊 周/月统计视图 |
 | **✅ 习惯** | 打卡 + 月历热力图、周期/限时计划、暂停（原因必填）、成果度量（数字/时长/文字）、截图 AI 解析（只解析不存图）、周/月/季/年数据面板、习惯详情历史 |
-| **🥗 AI 饮食** | 餐食照片 AI 识别、39 种本地食物库、运动截图/手动记录、减脂/维持/增肌目标、近 7 日对比、每周营养复盘；所有图片只分析不保存 |
+| **💚 健康** | 健康总览、体检/化验/体重秤报告 PDF 与常见图片导入、AI 结构化解析、异常关注和指标趋势；同时保留餐食照片识别、运动、目标与营养周报；原件只解析不保存 |
 | **🌙 每日回顾** | DID/GOOD/BAD/THOUGHTS 复盘、情绪 + 原因、情绪月历、GRAI AI 分析 |
 | **🌲 学习日记** | RPG 技能树、XP 经验值、学习笔记、统计面板 |
 | **🎭 角色库** | 50+ 预置角色（排球少年/Fate/EVA/柯南）、激励对话、互动优先级 |
@@ -153,7 +155,7 @@ LifeOSDB (IndexedDB v4)
 ├── characters      ← 角色库
 ├── settings        ← 应用设置
 ├── moments         ← 特殊事件
-└── nutrition       ← 餐食/运动/个人目标/每周营养复盘
+└── nutrition       ← 健康报告结构化档案/餐食/运动/个人目标/每周营养复盘
 ```
 
 ### 开发测试
@@ -169,6 +171,7 @@ node tests/habit-metrics.test.js   # 习惯度量/AI 解析/数据面板（5 项
 node tests/sleep-checkin.test.js     # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
+node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
 ```
 
 后端 smoke test：
@@ -190,4 +193,4 @@ node server.js
 
 ---
 
-> 版本：v6.0.1 | 作者：Jasmine | 最后更新：【2026-07-30】
+> 版本：v6.1.0 | 作者：Jasmine | 最后更新：【2026-08-01】

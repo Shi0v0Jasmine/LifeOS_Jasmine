@@ -52,7 +52,7 @@
     const PULL_INTERVAL_MS = 5 * 60 * 1000;   // 定时 pull 间隔
     const EPOCH = '1970-01-01T00:00:00.000Z'; // 首次全量同步起点
     const DEVICE_STATUS_CACHE_MS = 5 * 60 * 1000; // 设备状态自查缓存（F-111/F-112）
-    const APP_VERSION = '6.0.1';              // 心跳上报用（F-109）
+    const APP_VERSION = '6.1.0';              // 心跳上报用（F-109）
 
     /**
      * CloudBase Web SDK CDN（官方文档来源：

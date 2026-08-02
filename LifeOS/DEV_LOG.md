@@ -1,10 +1,21 @@
 # Life OS — 开发日志（Dev Log）
 
 > **日期**: 2026-07-08  
-> **当前版本**: v6.0.3（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前版本**: v6.1.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
 > **最后更新**: 【2026-08-01】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`
+
+---
+
+## v6.1.0 — 健康工作台与报告智能解析（2026-08-01）
+
+- 将全站「AI 饮食」入口升级为「健康」，保留 `nutrition.html` 地址兼容现有书签和 PWA；页面新增健康总览、饮食与运动、报告档案三视图，并完成桌面优先和 ≤768px 移动端布局。
+- 新增体检报告、化验单和体重秤报告导入：支持单份 PDF（最多 20 页）或 1–5 张常见图片，单文件 10MB；本地引入 PDF.js、heic2any、UTIF，兼容文本 PDF、扫描 PDF、HEIC/HEIF 与 TIFF。
+- 新增 `js/health-reports.js`：分批 AI 解析、指标别名归一、结果合并、确认编辑、关注项统计、指标趋势与结构化健康档案 DAO。复用 IndexedDB v4 `nutrition` store 的 `kind: healthReport`，不新增迁移。
+- 报告原件与渲染页仅驻留页面内存，持久化字段白名单明确排除 File、Blob、data URL 和图片；删除使用墓碑并继续参与多端同步。
+- 新增 `tests/health-report.test.js` 8 项，覆盖 AI 输出解析、通用 AI 客户端响应提取、别名、分批合并、持久化隐私、趋势聚合与软删除；本地合成 PDF 已完成真实导入与结构化解析验证。
+- Service Worker 静态缓存升级至 `lifeos-static-v20260801-3`，补入健康报告脚本和本地解码依赖。
 
 ---
 

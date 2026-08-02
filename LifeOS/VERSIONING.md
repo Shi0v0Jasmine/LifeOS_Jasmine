@@ -1,7 +1,7 @@
 # LifeOS — 版本管理（VERSIONING）
 
-Current source version: `6.0.3`
-Latest released version: `6.0.3`（2026-08-01 发布，修复移动端每日回顾缩放与日期栏溢出）
+Current source version: `6.1.0`
+Latest released version: `6.1.0`（2026-08-01 发布，AI 饮食升级为健康并新增健康报告导入解析）
 
 版本号格式：
 
@@ -98,6 +98,7 @@ LifeOS 示例：
 | v6.0.1 | — | 2026-07-30 | v4 | PATCH：AI 饮食在约 769–1050px（含高 DPI 窄窗口）改为单列卡片，页头与操作区可换行，修复双栏最小宽度挤压造成的逐字换行；SW 缓存升级至 `lifeos-static-v20260730-2`。 |
 | v6.0.2 | — | 2026-08-01 | v4 | PATCH：移动端时间轴事件卡片的 `top` / `height` 改为跟随 CSS 时间槽高变量，修复移动端 30px 槽高与桌面 40px JS 常量不一致导致的时间错位；SW 缓存升级至 `lifeos-static-v20260801-1`。 |
 | v6.0.3 | — | 2026-08-01 | v4 | PATCH：每日回顾移动端日期导航改为三列布局，日期输入与「回到今天」独占后续行，修复控件横向撑宽导致的整体缩放；SW 缓存升级至 `lifeos-static-v20260801-2`。 |
+| **v6.1.0** | — | **2026-08-01** | **v4** | 小版本：AI 饮食升级为「健康」工作台，新增健康总览/饮食与运动/报告档案三视图；支持 PDF 与常见图片格式的体检、化验和体重秤报告导入，浏览器本地解码后调用 AI 提取结构化指标；新增关注项、指标趋势、确认编辑与档案管理，原件不持久化；新增 8 项专项测试，SW 缓存升级至 `lifeos-static-v20260801-3`。 |
 
 > 注：v4.0.4 实际晚于 v4.1.0 发布（编号沿用规划槽位）。
 
@@ -113,7 +114,7 @@ LifeOS 示例：
 ## 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition
+□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition / health-report
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ 更新本文件（Current source version + 版本历史 + DB 登记）
@@ -137,3 +138,4 @@ LifeOS 示例：
 | ~~v5.4.0~~ | ~~联动/统计/详情/月历 + v4.0.5/v4.2.0 补做（F-027/F-035/F-044/F-067）~~ | ✅ 已发布 |
 | ~~v5.5.0~~ | ~~起床/睡觉打卡（F-123，时间轴快捷打卡，间隔即睡眠时长）~~ | ✅ 已发布 |
 | ~~v6.0.0~~ | ~~AI 饮食独立工作台（F-048~F-055）~~ | ✅ 已发布 |
+| ~~v6.1.0~~ | ~~健康工作台与健康报告导入解析（F-124~F-126）~~ | ✅ 已发布 |

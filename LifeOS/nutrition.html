@@ -6,11 +6,15 @@
     <meta name="theme-color" content="#7DD3FC">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-    <title>Life OS · AI 饮食</title>
+    <title>Life OS · 健康</title>
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="js/core.js?v=1.3"></script>
     <script src="js/nutrition.js?v=1.0"></script>
+    <script src="vendor/pdfjs/pdf.min.js"></script>
+    <script src="vendor/heic2any/heic2any.min.js"></script>
+    <script src="vendor/utif/UTIF.js"></script>
+    <script src="js/health-reports.js?v=1.1"></script>
     <script src="js/sync.js"></script>
     <script src="js/mobile-nav.js"></script>
     <script src="js/pwa.js"></script>
@@ -185,6 +189,91 @@
         .library-item input { width: 65px; padding: 6px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
         .inline-notice { margin-bottom: 12px; padding: 9px 11px; border-radius: var(--radius-md); background: var(--color-water-light); color: var(--text-secondary); font: .75rem/1.5 var(--font-sans); }
 
+        .health-tabs {
+            display: inline-flex; gap: 4px; margin: 0 0 18px; padding: 4px;
+            border: 1px solid var(--border-card); border-radius: var(--radius-md);
+            background: var(--bg-card); box-shadow: var(--shadow-sm); font-family: var(--font-sans);
+        }
+        .health-tabs button {
+            min-width: 132px; padding: 9px 18px; border: 0; border-radius: var(--radius-sm);
+            color: var(--text-secondary); background: transparent; cursor: pointer; font: 600 .8rem var(--font-sans);
+        }
+        .health-tabs button.active { color: var(--text-inverse); background: var(--color-ravenclaw-blue); box-shadow: var(--shadow-sm); }
+        .health-view { animation: health-in .22s ease both; }
+        @keyframes health-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+        .health-overview-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(340px, .85fr); gap: 18px; }
+        .health-overview-grid > * { min-width: 0; }
+        .health-overview-grid + .health-overview-grid { margin-top: 18px; }
+        .report-upload-card, .health-summary-card { min-height: 255px; }
+        .report-dropzone {
+            position: relative; min-height: 150px; border: 1.5px dashed var(--color-water);
+            border-radius: var(--radius-lg); background: var(--color-water-light); display: grid;
+            place-items: center; text-align: center; padding: 20px; overflow: hidden;
+        }
+        .report-dropzone.dragging { border-color: var(--color-ravenclaw-blue); background: var(--color-mint-light); }
+        .report-dropzone input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
+        .report-drop-icon { width: 44px; height: 44px; margin: 0 auto 8px; border-radius: 50%; display: grid; place-items: center; color: var(--color-water-deep); background: var(--text-inverse); font-size: 1.25rem; }
+        .report-drop-title { color: var(--text-primary); font: 600 .92rem var(--font-sans); }
+        .report-drop-hint { margin-top: 6px; color: var(--text-muted); font: .72rem/1.5 var(--font-sans); }
+        .report-select-visual { display: inline-flex; margin-top: 12px; pointer-events: none; }
+        .report-type-row { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+        .report-type-chip { padding: 5px 10px; border: 1px solid var(--border-light); border-radius: 18px; color: var(--text-secondary); background: var(--text-inverse); font: .7rem var(--font-sans); }
+        .report-progress { margin-top: 12px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--color-water-light); color: var(--text-secondary); font: .75rem/1.5 var(--font-sans); }
+        .report-progress.error { background: var(--color-urgent-light); color: var(--color-urgent); }
+
+        .health-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 18px; }
+        .health-count { padding: 13px 8px; border: 1px solid var(--border-light); border-radius: var(--radius-md); text-align: center; font-family: var(--font-sans); }
+        .health-count strong { display: block; margin-top: 4px; font-size: 1.35rem; color: var(--text-primary); }
+        .health-count span { color: var(--text-muted); font-size: .68rem; }
+        .health-count.normal { border-top: 3px solid var(--color-mint); }
+        .health-count.attention { border-top: 3px solid var(--color-gold-deep); }
+        .health-count.followup { border-top: 3px solid var(--color-water-deep); }
+        .health-count.unknown { border-top: 3px solid var(--text-muted); }
+        .health-last-date { margin-top: 16px; color: var(--text-muted); font: .72rem var(--font-sans); }
+
+        .metric-table { width: 100%; border-collapse: collapse; font: .74rem var(--font-sans); }
+        .metric-table th { padding: 8px; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border-light); font-weight: 500; }
+        .metric-table td { padding: 10px 8px; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); vertical-align: middle; }
+        .metric-table tr:last-child td { border-bottom: 0; }
+        .metric-value { color: var(--text-primary); font-weight: 600; }
+        .metric-status { display: inline-flex; padding: 3px 8px; border-radius: 12px; font-size: .66rem; white-space: nowrap; }
+        .metric-status.normal { color: var(--color-mint-deep); background: var(--color-mint-light); }
+        .metric-status.attention { color: var(--color-gold-deep); background: var(--color-gold-light); }
+        .metric-status.followup { color: var(--color-water-deep); background: var(--color-water-light); }
+        .metric-status.unknown { color: var(--text-muted); background: var(--bg-hover); }
+
+        .trend-toolbar { display: flex; gap: 8px; align-items: center; }
+        .trend-select { max-width: 180px; padding: 7px 9px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--text-inverse); color: var(--text-secondary); font: .72rem var(--font-sans); }
+        .trend-chart { position: relative; height: 210px; margin-top: 8px; padding: 12px 8px 28px; border-bottom: 1px solid var(--border-light); display: flex; align-items: flex-end; gap: 8px; }
+        .trend-point { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
+        .trend-stem { width: 3px; min-height: 6px; border-radius: 3px 3px 0 0; background: linear-gradient(var(--color-water-deep), var(--color-water-light)); }
+        .trend-dot { position: absolute; width: 9px; height: 9px; border-radius: 50%; margin-bottom: -4px; background: var(--color-water-deep); box-shadow: 0 0 0 4px var(--color-water-light); }
+        .trend-label { position: absolute; bottom: -22px; color: var(--text-muted); font: .62rem var(--font-sans); white-space: nowrap; }
+        .trend-value { position: absolute; color: var(--text-secondary); font: 600 .66rem var(--font-sans); white-space: nowrap; }
+
+        .report-list { display: flex; flex-direction: column; gap: 8px; }
+        .report-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) 90px 88px auto; gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--text-inverse); font-family: var(--font-sans); }
+        .report-row-icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--color-water-light); }
+        .report-row-title { min-width: 0; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .report-row-meta { margin-top: 3px; color: var(--text-muted); font-size: .66rem; }
+        .report-row-date, .report-row-count { color: var(--text-secondary); font-size: .7rem; }
+        .report-actions { display: flex; gap: 3px; }
+        .report-link { border: 0; background: transparent; color: var(--color-water-deep); cursor: pointer; font: .7rem var(--font-sans); white-space: nowrap; }
+        .health-lifestyle-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .summary-number { margin: 10px 0 4px; color: var(--color-ravenclaw-blue); font: 700 1.45rem var(--font-sans); }
+        .summary-caption { color: var(--text-muted); font: .7rem var(--font-sans); }
+
+        .report-modal { width: min(980px, 94vw); max-height: calc(100dvh - 40px); overflow-y: auto; }
+        .report-meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+        .draft-metrics { overflow-x: auto; }
+        .draft-metrics .metric-table { min-width: 760px; }
+        .draft-metrics input, .draft-metrics select { width: 100%; min-width: 70px; padding: 6px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); font: .72rem var(--font-sans); }
+        .report-notes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+        .report-note-box { padding: 12px; border-radius: var(--radius-md); background: var(--bg-hover); color: var(--text-secondary); font: .74rem/1.6 var(--font-sans); }
+        .report-note-box ul { margin: 6px 0 0; padding-left: 18px; }
+        .medical-note { margin: 18px 0 0; text-align: center; color: var(--text-muted); font: .68rem var(--font-sans); }
+
         @media (max-width: 1050px) {
             .nutrition-header {
                 flex-direction: column;
@@ -196,6 +285,8 @@
             .meal-workbench { grid-template-columns: 1fr; }
             .upload-zone { min-height: 170px; }
             .weekly-layout { grid-template-columns: 1fr; }
+            .health-overview-grid { grid-template-columns: 1fr; }
+            .report-meta-grid { grid-template-columns: repeat(2, 1fr); }
         }
         @media (max-width: 768px) {
             body .main-content { width: 100%; }
@@ -221,6 +312,15 @@
             .form-grid { grid-template-columns: 1fr; }
             .form-group.full { grid-column: auto; }
             .modal-actions { position: sticky; bottom: 0; background: var(--bg-card); padding-top: 10px; }
+            .health-tabs { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+            .health-tabs button { min-width: 0; padding: 9px 5px; font-size: .7rem; }
+            .health-counts { grid-template-columns: repeat(2, 1fr); }
+            .report-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
+            .report-row-date, .report-row-count { display: none; }
+            .report-actions { flex-direction: column; align-items: flex-end; }
+            .health-lifestyle-summary { grid-template-columns: 1fr; }
+            .report-meta-grid, .report-notes { grid-template-columns: 1fr; }
+            .trend-chart { height: 180px; }
         }
         @media (max-width: 420px) {
             .header-actions .soft-btn { flex: 1; }
@@ -237,10 +337,10 @@
             <div class="nutrition-page">
                 <header class="page-header nutrition-header">
                     <div>
-                        <h2>AI 饮食</h2>
-                        <p class="header-subtitle">记录每一餐，也看见能量与营养的长期节奏</p>
+                        <h2>健康</h2>
+                        <p class="header-subtitle">把饮食、运动与身体指标连成一条长期脉络</p>
                     </div>
-                    <div class="header-actions">
+                    <div v-show="activeView === 'lifestyle'" class="header-actions">
                         <div class="date-control">
                             <button type="button" @click="shiftDate(-1)" aria-label="前一天">‹</button>
                             <input type="date" v-model="currentDate" @change="loadDay">
@@ -249,6 +349,94 @@
                         <button class="soft-btn" type="button" @click="showProfile = true">⚙ 个人目标</button>
                     </div>
                 </header>
+
+                <nav class="health-tabs" aria-label="健康工作台视图">
+                    <button type="button" :class="{active: activeView === 'overview'}" @click="activeView = 'overview'">健康总览</button>
+                    <button type="button" :class="{active: activeView === 'lifestyle'}" @click="activeView = 'lifestyle'">饮食与运动</button>
+                    <button type="button" :class="{active: activeView === 'archive'}" @click="activeView = 'archive'">报告档案</button>
+                </nav>
+
+                <div v-show="activeView === 'overview'" class="health-view">
+                    <section class="health-overview-grid">
+                        <article class="nutrition-card report-upload-card">
+                            <div class="card-heading">
+                                <div><h3>↥ 导入健康报告</h3><p class="card-kicker">体检报告、化验单或体重秤数据</p></div>
+                                <span class="privacy-chip">🔒 原件不保存</span>
+                            </div>
+                            <div class="report-dropzone" :class="{dragging: reportDragging}" @dragenter.prevent="reportDragging = true" @dragover.prevent @dragleave.prevent="reportDragging = false" @drop.prevent="dropReportFiles">
+                                <input type="file" :accept="reportAccept" multiple @change="chooseReportFiles" aria-label="选择健康报告">
+                                <div>
+                                    <div class="report-drop-icon">⇧</div>
+                                    <div class="report-drop-title">拖入 PDF 或报告图片</div>
+                                    <div class="report-drop-hint">支持 1 份 PDF 或 1–5 张图片 · 单文件不超过 10MB<br>AI 解析后请确认再存入健康档案</div>
+                                    <span class="primary-btn report-select-visual">选择报告</span>
+                                </div>
+                            </div>
+                            <div class="report-type-row"><span class="report-type-chip">▣ 体检报告</span><span class="report-type-chip">⚗ 化验单</span><span class="report-type-chip">▤ 体重秤报告</span></div>
+                            <div v-if="reportStatus" class="report-progress" :class="{error: reportError}">{{ reportStatus }}</div>
+                        </article>
+
+                        <article class="nutrition-card health-summary-card">
+                            <div class="card-heading"><div><h3>健康概览</h3><p class="card-kicker">最近一次确认保存的健康报告</p></div></div>
+                            <div class="health-last-date">最近报告：{{ latestHealthReport ? latestHealthReport.date : '尚未导入' }}</div>
+                            <div class="health-counts">
+                                <div class="health-count normal"><span>正常</span><strong>{{ healthCounts.normal }}</strong></div>
+                                <div class="health-count attention"><span>关注</span><strong>{{ healthCounts.attention }}</strong></div>
+                                <div class="health-count followup"><span>建议复查</span><strong>{{ healthCounts.followup }}</strong></div>
+                                <div class="health-count unknown"><span>待核对</span><strong>{{ healthCounts.unknown }}</strong></div>
+                            </div>
+                            <p class="disclaimer">状态基于报告参考范围与原文标记；“建议复查”不等于诊断。</p>
+                        </article>
+                    </section>
+
+                    <section class="health-overview-grid">
+                        <article class="nutrition-card">
+                            <div class="card-heading"><div><h3>需要关注</h3><p class="card-kicker">最近报告中的异常或待复查指标</p></div></div>
+                            <div v-if="attentionMetrics.length" style="overflow-x:auto">
+                                <table class="metric-table"><thead><tr><th>指标</th><th>结果</th><th>参考范围</th><th>状态</th><th>日期</th></tr></thead><tbody>
+                                    <tr v-for="item in attentionMetrics" :key="item.reportId + '-' + item.id">
+                                        <td>{{ item.name }}</td><td class="metric-value">{{ item.value }} {{ item.unit }}</td><td>{{ item.referenceText || formatReference(item) || '—' }}</td><td><span class="metric-status" :class="item.adviceLevel">{{ statusLabel(item.adviceLevel) }}</span></td><td>{{ item.date }}</td>
+                                    </tr>
+                                </tbody></table>
+                            </div>
+                            <div v-else class="empty-records">导入并确认报告后，需关注的指标会集中显示在这里。</div>
+                        </article>
+
+                        <article class="nutrition-card">
+                            <div class="card-heading">
+                                <div><h3>指标趋势</h3><p class="card-kicker">同一指标的长期变化</p></div>
+                                <div class="trend-toolbar"><select v-model="trendMetricKey" class="trend-select"><option value="">选择指标</option><option v-for="option in trendMetricOptions" :key="option.key" :value="option.key">{{ option.name }}</option></select></div>
+                            </div>
+                            <div v-if="trendPoints.length" class="trend-chart">
+                                <div v-for="point in trendPoints" :key="point.reportId + point.date" class="trend-point">
+                                    <div class="trend-stem" :style="{height: point.height + '%'}"></div><i class="trend-dot" :style="{bottom: point.height + '%'}"></i><span class="trend-value" :style="{bottom: 'calc(' + point.height + '% + 8px)'}">{{ point.value }}{{ point.unit }}</span><span class="trend-label">{{ point.date.slice(5) }}</span>
+                                </div>
+                            </div>
+                            <div v-else class="empty-records">至少保存两次同类数值指标后可查看趋势。</div>
+                        </article>
+                    </section>
+
+                    <section class="health-overview-grid">
+                        <article class="nutrition-card">
+                            <div class="card-heading"><div><h3>最近报告</h3><p class="card-kicker">已确认的结构化健康档案</p></div><button class="report-link" type="button" @click="activeView = 'archive'">查看全部 →</button></div>
+                            <div v-if="healthReports.length" class="report-list">
+                                <div v-for="report in healthReports.slice(0, 5)" :key="report.id" class="report-row">
+                                    <span class="report-row-icon">{{ reportTypeIcon(report.reportType) }}</span><div><div class="report-row-title">{{ report.title }}</div><div class="report-row-meta">{{ report.provider || report.device || reportTypeLabel(report.reportType) }}</div></div><span class="report-row-date">{{ report.date }}</span><span class="report-row-count">{{ report.metrics.length }} 项指标</span><div class="report-actions"><button class="report-link" type="button" @click="openReport(report)">查看解读</button></div>
+                                </div>
+                            </div>
+                            <div v-else class="empty-records">还没有健康报告，从上方导入第一份吧。</div>
+                        </article>
+
+                        <article class="nutrition-card">
+                            <div class="card-heading"><div><h3>今日饮食与运动</h3><p class="card-kicker">{{ currentDate }}</p></div><button class="report-link" type="button" @click="activeView = 'lifestyle'">进入记录 →</button></div>
+                            <div class="health-lifestyle-summary"><div><div class="summary-number">{{ dayTotals.calories }} kcal</div><div class="summary-caption">饮食摄入<span v-if="target"> · 目标 {{ target.calories }} kcal</span></div></div><div><div class="summary-number">{{ exerciseBurn }} kcal</div><div class="summary-caption">运动消耗 · {{ exercises.length }} 条记录</div></div></div>
+                            <div v-if="target" class="progress-track" style="margin-top:18px"><div class="progress-fill" :style="{width: Math.min(100, Math.round(dayTotals.calories / target.calories * 100)) + '%'}"></div></div>
+                        </article>
+                    </section>
+                    <p class="medical-note">◇ AI 解读仅供健康管理参考，不替代医生诊断、治疗或紧急医疗建议。</p>
+                </div>
+
+                <div v-show="activeView === 'lifestyle'" class="health-view">
 
                 <section class="nutrition-grid">
                     <article class="nutrition-card">
@@ -409,8 +597,57 @@
                     </div>
                     <div v-else class="empty-records">周报将在上一自然周结束后自动生成；没有 AI 配置时会使用本地规则。</div>
                 </section>
+                </div>
+
+                <div v-show="activeView === 'archive'" class="health-view">
+                    <section class="nutrition-card">
+                        <div class="card-heading"><div><h3>报告档案</h3><p class="card-kicker">只保存已确认的结构化数据，原始 PDF 与图片不会归档</p></div><button class="primary-btn" type="button" @click="activeView = 'overview'">+ 导入报告</button></div>
+                        <div v-if="healthReports.length" class="report-list">
+                            <div v-for="report in healthReports" :key="report.id" class="report-row">
+                                <span class="report-row-icon">{{ reportTypeIcon(report.reportType) }}</span><div><div class="report-row-title">{{ report.title }}</div><div class="report-row-meta">{{ report.provider || report.device || reportTypeLabel(report.reportType) }} · {{ report.sourceType === 'pdf' ? 'PDF' : '图片' }} {{ report.pageCount }} 页</div></div><span class="report-row-date">{{ report.date }}</span><span class="report-row-count">{{ report.metrics.length }} 项指标</span><div class="report-actions"><button class="report-link" type="button" @click="openReport(report)">查看</button><button class="danger-btn" type="button" @click="removeHealthReport(report.id)" aria-label="删除报告">×</button></div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-records">尚无报告档案。导入报告并核对结果后，结构化指标会出现在这里。</div>
+                    </section>
+                    <p class="medical-note">◇ 删除报告会以同步墓碑传播到其他设备。</p>
+                </div>
             </div>
         </main>
+
+        <div v-if="showReportDraft" class="modal-overlay" @click.self="closeReportDraft">
+            <div class="modal report-modal">
+                <h3>核对健康报告</h3>
+                <p class="modal-desc">AI 可能识别错误。请核对报告日期、指标值、单位和参考范围，确认后才会保存。</p>
+                <div class="inline-notice">🔒 原始文件和页面图片仍只在当前页面内存中；关闭或保存后立即释放。</div>
+                <div class="report-meta-grid">
+                    <div class="form-group"><label>报告类型</label><select class="form-input" v-model="reportDraft.reportType"><option value="physical_exam">体检报告</option><option value="lab">化验单</option><option value="body_scale">体重秤报告</option><option value="other">其他健康报告</option></select></div>
+                    <div class="form-group"><label>报告日期</label><input class="form-input" type="date" v-model="reportDraft.reportDate"></div>
+                    <div class="form-group"><label>报告名称</label><input class="form-input" v-model.trim="reportDraft.title"></div>
+                    <div class="form-group"><label>机构 / 设备</label><input class="form-input" v-model.trim="reportDraft.provider" :placeholder="reportDraft.device || '体检机构或设备名称'"></div>
+                </div>
+                <div class="draft-metrics">
+                    <table class="metric-table"><thead><tr><th>指标</th><th>结果</th><th>单位</th><th>参考范围</th><th>状态</th><th>证据页</th><th></th></tr></thead><tbody>
+                        <tr v-for="(metric, index) in reportDraft.metrics" :key="metric.id">
+                            <td><input v-model.trim="metric.name" @change="refreshMetricKey(metric)"></td><td><input v-model.trim="metric.value" @change="refreshNumericValue(metric)"></td><td><input v-model.trim="metric.unit"></td><td><input v-model.trim="metric.referenceText" :placeholder="formatReference(metric)"></td><td><select v-model="metric.adviceLevel"><option value="normal">正常</option><option value="attention">关注</option><option value="followup">建议复查</option><option value="unknown">待核对</option></select></td><td><input type="number" min="1" v-model.number="metric.page"></td><td><button class="danger-btn" type="button" @click="reportDraft.metrics.splice(index, 1)">×</button></td>
+                        </tr>
+                    </tbody></table>
+                </div>
+                <button class="ghost-btn" type="button" style="margin-top:10px" @click="addDraftMetric">+ 手动补充指标</button>
+                <div class="report-notes"><div class="report-note-box"><strong>需要关注</strong><ul><li v-for="item in reportDraft.concerns" :key="item">{{ item }}</li><li v-if="!reportDraft.concerns.length">AI 未列出额外关注项</li></ul></div><div class="report-note-box"><strong>生活管理建议</strong><ul><li v-for="item in reportDraft.suggestions" :key="item">{{ item }}</li><li v-if="!reportDraft.suggestions.length">保存前请结合专业意见判断</li></ul></div></div>
+                <div class="disclaimer">{{ reportDraft.summary || 'AI 未生成摘要。' }}<br>本功能不提供医学诊断；明显不适或危急情况请及时就医。</div>
+                <div class="modal-actions"><button class="btn-secondary" type="button" @click="closeReportDraft">取消</button><button class="primary-btn" type="button" :disabled="savingHealthReport || !reportDraft.metrics.length" @click="saveHealthReport">{{ savingHealthReport ? '保存中…' : '确认并保存结构化数据' }}</button></div>
+            </div>
+        </div>
+
+        <div v-if="selectedReport" class="modal-overlay" @click.self="selectedReport = null">
+            <div class="modal report-modal">
+                <h3>{{ selectedReport.title }}</h3><p class="modal-desc">{{ selectedReport.date }} · {{ selectedReport.provider || selectedReport.device || reportTypeLabel(selectedReport.reportType) }} · {{ selectedReport.metrics.length }} 项指标</p>
+                <div class="draft-metrics"><table class="metric-table"><thead><tr><th>指标</th><th>结果</th><th>参考范围</th><th>状态</th><th>说明</th></tr></thead><tbody><tr v-for="metric in selectedReport.metrics" :key="metric.id"><td>{{ metric.name }}</td><td class="metric-value">{{ metric.value }} {{ metric.unit }}</td><td>{{ metric.referenceText || formatReference(metric) || '—' }}</td><td><span class="metric-status" :class="metric.adviceLevel">{{ statusLabel(metric.adviceLevel) }}</span></td><td>{{ metric.explanation || metric.evidence || '—' }}</td></tr></tbody></table></div>
+                <div v-if="selectedReport.summary" class="report-note-box" style="margin-top:14px">{{ selectedReport.summary }}</div>
+                <div class="disclaimer">AI 解读仅供健康管理参考，不替代医生诊断。</div>
+                <div class="modal-actions"><button class="primary-btn" type="button" @click="selectedReport = null">关闭</button></div>
+            </div>
+        </div>
 
         <div v-if="showFoodLibrary" class="modal-overlay" @click.self="showFoodLibrary = false">
             <div class="modal">
@@ -487,7 +724,7 @@
                     { id: 'timeline', name: '时间轴', url: 'timeline.html', icon: '⏱' },
                     { id: 'tasks', name: '任务', url: 'tasks.html', icon: '📋' },
                     { id: 'habits', name: '习惯', url: 'habits.html', icon: '✓' },
-                    { id: 'nutrition', name: 'AI 饮食', url: 'nutrition.html', icon: '🥗' },
+                    { id: 'nutrition', name: '健康', url: 'nutrition.html', icon: '💚' },
                     { id: 'review', name: '回顾', url: 'review.html', icon: '📝' },
                     { id: 'learning', name: '学习', url: 'learning.html', icon: '🎓' },
                     { id: 'characters', name: '角色库', url: 'characters.html', icon: '👤' },
@@ -522,6 +759,10 @@
             setup() {
                 const Engine = LifeOS.NutritionEngine;
                 const Nutrition = LifeOS.Nutrition;
+                const HealthEngine = LifeOS.HealthReportEngine;
+                const HealthFiles = LifeOS.HealthReportFiles;
+                const HealthReports = LifeOS.HealthReports;
+                const activeView = ref('overview');
                 const currentDate = ref(LifeOS.Utils.formatDate());
                 const mealTypes = ['早餐', '午餐', '晚餐', '加餐'];
                 const mealType = ref('午餐');
@@ -550,6 +791,16 @@
                 const weeklyReport = ref(null);
                 const reportRange = ref(Engine.previousWeek(currentDate.value));
                 const generatingReport = ref(false);
+                const healthReports = ref([]);
+                const reportDragging = ref(false);
+                const reportStatus = ref('');
+                const reportError = ref(false);
+                const reportAccept = HealthFiles.accept;
+                const showReportDraft = ref(false);
+                const selectedReport = ref(null);
+                const savingHealthReport = ref(false);
+                const reportDraft = ref({ reportType: 'other', title: '健康报告', reportDate: currentDate.value, provider: '', device: '', metrics: [], concerns: [], suggestions: [] });
+                const trendMetricKey = ref('');
 
                 const draftTotals = computed(() => Engine.sumFoods(draftFoods.value));
                 const dayTotals = computed(() => Engine.aggregateMeals(meals.value));
@@ -581,6 +832,26 @@
                         return { key, ...item, percent: Math.round((item.ratio || 0) * 100) };
                     });
                 });
+                const latestHealthReport = computed(() => healthReports.value[0] || null);
+                const healthCounts = computed(() => HealthEngine.overview(latestHealthReport.value ? [latestHealthReport.value] : []));
+                const attentionMetrics = computed(() => healthReports.value.flatMap(report => (report.metrics || []).filter(metric => metric.adviceLevel === 'attention' || metric.adviceLevel === 'followup').map(metric => ({ ...metric, date: report.date, reportId: report.id }))).slice(0, 7));
+                const trendMetricOptions = computed(() => {
+                    const map = new Map();
+                    healthReports.value.forEach(report => (report.metrics || []).forEach(metric => {
+                        if (Number.isFinite(metric.numericValue) && !map.has(metric.key)) map.set(metric.key, { key: metric.key, name: metric.name });
+                    }));
+                    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+                });
+                const trendPoints = computed(() => {
+                    if (!trendMetricKey.value) return [];
+                    const points = HealthEngine.trend(healthReports.value, trendMetricKey.value);
+                    if (points.length < 2) return [];
+                    const values = points.map(point => point.value);
+                    const min = Math.min(...values);
+                    const max = Math.max(...values);
+                    const spread = Math.max(max - min, Math.abs(max) * 0.08, 1);
+                    return points.map(point => ({ ...point, height: Math.round(16 + (point.value - min) / spread * 72) }));
+                });
 
                 async function loadFoodLibrary() {
                     const response = await fetch('data/food-nutrition.json');
@@ -593,6 +864,108 @@
                     meals.value = data.meals;
                     exercises.value = data.exercises;
                     await loadChart();
+                }
+
+                async function loadHealthReports() {
+                    healthReports.value = await HealthReports.getReports();
+                    if (!trendMetricKey.value && trendMetricOptions.value.length) trendMetricKey.value = trendMetricOptions.value[0].key;
+                }
+
+                async function processReportFiles(files) {
+                    reportDragging.value = false;
+                    reportError.value = false;
+                    reportStatus.value = '正在检查文件…';
+                    try {
+                        const prepared = await HealthFiles.prepare(files, message => { reportStatus.value = message; });
+                        reportStatus.value = '文件已预处理，准备调用 AI…';
+                        const parsed = await HealthReports.analyzePrepared(prepared, message => { reportStatus.value = message; });
+                        reportDraft.value = {
+                            ...parsed,
+                            reportDate: parsed.reportDate || currentDate.value,
+                            provider: parsed.provider || '',
+                            device: parsed.device || '',
+                            metrics: parsed.metrics || [],
+                            concerns: parsed.concerns || [],
+                            suggestions: parsed.suggestions || []
+                        };
+                        showReportDraft.value = true;
+                        reportStatus.value = `解析完成：识别 ${reportDraft.value.metrics.length} 项指标，请核对后保存。`;
+                    } catch (error) {
+                        reportStatus.value = error.message || '报告解析失败';
+                        reportError.value = true;
+                    }
+                }
+
+                function chooseReportFiles(event) {
+                    const files = Array.from(event.target.files || []);
+                    event.target.value = '';
+                    processReportFiles(files);
+                }
+
+                function dropReportFiles(event) {
+                    processReportFiles(Array.from(event.dataTransfer.files || []));
+                }
+
+                function closeReportDraft() {
+                    showReportDraft.value = false;
+                    reportDraft.value = { reportType: 'other', title: '健康报告', reportDate: currentDate.value, provider: '', device: '', metrics: [], concerns: [], suggestions: [] };
+                }
+
+                function refreshMetricKey(metric) {
+                    metric.key = HealthEngine.canonicalMetricKey(metric.name);
+                }
+
+                function refreshNumericValue(metric) {
+                    const parsed = Number(String(metric.value || '').replace(/,/g, ''));
+                    metric.numericValue = Number.isFinite(parsed) ? parsed : null;
+                }
+
+                function addDraftMetric() {
+                    reportDraft.value.metrics.push({ id: LifeOS.Utils.generateId(), key: '', name: '', value: '', numericValue: null, unit: '', referenceLow: null, referenceHigh: null, referenceText: '', flag: 'unknown', adviceLevel: 'unknown', page: 1, evidence: '', explanation: '', confidence: 1 });
+                }
+
+                async function saveHealthReport() {
+                    savingHealthReport.value = true;
+                    reportError.value = false;
+                    try {
+                        reportDraft.value.metrics.forEach(metric => { refreshMetricKey(metric); refreshNumericValue(metric); });
+                        await HealthReports.saveReport(reportDraft.value);
+                        closeReportDraft();
+                        reportStatus.value = '结构化健康数据已保存，原始文件未保存。';
+                        await loadHealthReports();
+                    } catch (error) {
+                        reportStatus.value = error.message;
+                        reportError.value = true;
+                    } finally {
+                        savingHealthReport.value = false;
+                    }
+                }
+
+                function openReport(report) { selectedReport.value = report; }
+
+                async function removeHealthReport(id) {
+                    if (!confirm('删除这份结构化健康报告？删除会同步到其他设备。')) return;
+                    await HealthReports.deleteReport(id);
+                    await loadHealthReports();
+                }
+
+                function reportTypeLabel(type) {
+                    return ({ physical_exam: '体检报告', lab: '化验单', body_scale: '体重秤报告', other: '健康报告' })[type] || '健康报告';
+                }
+
+                function reportTypeIcon(type) {
+                    return ({ physical_exam: '▣', lab: '⚗', body_scale: '▤', other: '◇' })[type] || '◇';
+                }
+
+                function statusLabel(level) {
+                    return ({ normal: '正常', attention: '关注', followup: '建议复查', unknown: '待核对' })[level] || '待核对';
+                }
+
+                function formatReference(metric) {
+                    if (metric.referenceLow !== null && metric.referenceHigh !== null) return `${metric.referenceLow}–${metric.referenceHigh}`;
+                    if (metric.referenceLow !== null) return `≥ ${metric.referenceLow}`;
+                    if (metric.referenceHigh !== null) return `≤ ${metric.referenceHigh}`;
+                    return '';
                 }
 
                 function shiftDate(amount) {
@@ -767,21 +1140,29 @@
                     profile.value = await Nutrition.getProfile();
                     if (profile.value) profileForm.value = { ...profile.value };
                     await loadDay();
+                    await loadHealthReports();
                     await generateReport(false);
                 });
 
                 return {
-                    currentDate, mealTypes, mealType, mealImage, mealStatus, mealStatusError,
+                    activeView, currentDate, mealTypes, mealType, mealImage, mealStatus, mealStatusError,
                     analyzingMeal, savingMeal, draftFoods, draftTotals, meals, exercises,
                     showFoodLibrary, foodSearch, filteredFoods, showExercise, exerciseImage,
                     exerciseForm, exerciseStatus, exerciseStatusError, analyzingExercise,
                     showProfile, profile, profileForm, dayTotals, exerciseBurn, target,
                     calorieDegrees, calorieRemaining, macros, goalLabel, exerciseSummary,
                     chartDays, weeklyReport, reportRange, generatingReport, nutrientCards,
+                    healthReports, latestHealthReport, healthCounts, attentionMetrics,
+                    trendMetricOptions, trendMetricKey, trendPoints, reportDragging,
+                    reportStatus, reportError, reportAccept, showReportDraft, reportDraft,
+                    selectedReport, savingHealthReport,
                     shiftDate, loadDay, chooseMealImage, analyzeMeal, openFoodLibrary,
                     addLibraryFood, recalculateDraft, saveMeal, openExercise,
                     chooseExerciseImage, analyzeExercise, saveExercise, saveProfile,
-                    removeRecord, generateReport
+                    removeRecord, generateReport, chooseReportFiles, dropReportFiles,
+                    closeReportDraft, refreshMetricKey, refreshNumericValue, addDraftMetric,
+                    saveHealthReport, openReport, removeHealthReport, reportTypeLabel,
+                    reportTypeIcon, statusLabel, formatReference
                 };
             }
         }).mount('#app');

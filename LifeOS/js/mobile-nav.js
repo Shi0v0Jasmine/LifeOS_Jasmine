@@ -95,8 +95,8 @@
     }
 
     /*
-     * AI 饮食是独立工作台：桌面侧栏保持全站可达。
-     * 移动端仍保留原 8 个高频 Tab，AI 饮食通过汉堡菜单进入，避免底栏过载。
+     * 健康是独立工作台：桌面侧栏保持全站可达。
+     * 移动端仍保留原 8 个高频 Tab，健康通过汉堡菜单进入，避免底栏过载。
      */
     function injectNutritionLink() {
         var nav = document.querySelector('.sidebar-nav');
@@ -107,7 +107,7 @@
         link.href = 'nutrition.html';
         link.className = 'nav-item' + (page === 'nutrition.html' ? ' active' : '');
         link.setAttribute('data-nav-id', 'nutrition');
-        link.innerHTML = '<span class="nav-icon" aria-hidden="true">🥗</span><span class="nav-label">AI 饮食</span>';
+        link.innerHTML = '<span class="nav-icon" aria-hidden="true">💚</span><span class="nav-label">健康</span>';
 
         var habits = nav.querySelector('a[href="habits.html"]');
         if (habits && habits.nextSibling) {

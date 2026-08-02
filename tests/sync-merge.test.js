@@ -963,6 +963,9 @@ const tests = [
         await test();
         console.log(`PASS ${test.name}`);
     }
+    console.log(`\n同步引擎测试全部通过（${tests.length} 项）✓`);
+    // sync.js 会安装心跳/状态轮询计时器；测试断言完成后显式退出，避免 CI 被后台计时器挂住。
+    process.exit(0);
 })().catch((error) => {
     console.error(`FAIL ${error.message}`);
     console.error(error.stack);
