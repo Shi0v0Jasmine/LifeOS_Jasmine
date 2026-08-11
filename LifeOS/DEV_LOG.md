@@ -889,6 +889,20 @@ node --check LifeOS/js/sync.js → OK
 | 部署/校验 | core.js / sw.js 单文件部署，curl 校验线上含 `_coerceTaskArray` 与新 SW 版本号 ✅ |
 | 配置问题（非代码 bug） | kimi-for-coding key（sk-kimi- 开头）会过期：12:52 可用、14:08 起 401。遇「生成计划失败：API Key invalid/expired」需到设置页更新 key |
 
+### 9.31 v6.1.1 回顾页移动端整页缩放残余修复：历史摘要 nowrap 撑宽（2026-08-11）
+
+**背景**：用户手机端反馈其他页面移动端都正常、唯独每日回顾页像被整体缩小（内容右偏、文字右边被裁）。v6.0.3 已修过日期导航撑宽，本节是残余根因。
+
+| 项目 | 内容 |
+|------|------|
+| 复现 | WebBridge + CDP 设备模拟（390×844，**需先设模拟再刷新**，否则媒体查询不重算、测量全是脏数据）：`documentElement.scrollWidth` 627 vs 视口 390 |
+| 定位方法 | 逐个子元素 `display:none` 二分：隐藏 `.history-sidebar` 后 627→407（407=390+17 经典滚动条占位，移动端覆盖式滚动条无此问题）；`body{width:0}` 量 min-content 确认侧栏子树即元凶 |
+| 根因 | `.history-snippet`（历史回顾摘要）是 `.history-item` 的 flex 子项，`white-space:nowrap` 长文本（如健康报告摘录）的最小内容宽度沿 侧栏→review-container→page-content→main-content 链向上传播，撑宽布局视口 → 移动端按 803px 排版再缩到屏幕，整页"变小" |
+| 踩坑 | 标准解法 `min-width:0`（无论是加在 snippet 还是 sidebar 上）在本例均**不能**阻断 min-content 贡献（实测无效）；`white-space:normal` 有效但牺牲单行省略号 |
+| 修复 | `.history-snippet` 补 `width:0`（review.html:139）：`flex:1` 的 basis 0% 本就决定实际尺寸，`width:0` 只中和掉 nowrap 内容的 min-content 贡献，桌面/移动端单行省略号行为均不变。修复后 390px 模拟实测 scrollWidth 407（=视口+滚动条）、 offender 118 → 4（均为铺满布局视口的正常元素） |
+| SW 缓存 | `v20260801-3` → `v20260811-1` |
+| 部署/校验 | review.html / sw.js 单文件部署，curl 校验 ✅；390×844 截图核对：日期三列导航、心情 4×2 网格、DID 卡片全宽无裁切 ✅ |
+
 ### 9.7 与既有功能的关系
 
 - 本机 Express 后端（v1.2 `server.js` + `BackendSync`）继续保留作本机备份；云端同步与其并存互不影响
