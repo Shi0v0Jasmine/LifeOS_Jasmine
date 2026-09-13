@@ -11,7 +11,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const DATA_DIR = path.join(__dirname, 'LifeOS', 'data');
+// An explicit override lets integration tests use disposable synthetic data.
+const DATA_DIR = path.resolve(process.env.LIFEOS_DATA_DIR || path.join(__dirname, 'LifeOS', 'data'));
 const DB_FILE = path.join(DATA_DIR, 'lifeos-db.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 
@@ -19,7 +20,30 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 app.use(express.json({ limit: '50mb' }));
+// Only reference datasets are public. Backups and the persisted DB must never
+// bypass the filtered API through Express's static file middleware.
+app.use((req, res, next) => {
+    let requested;
+    try { requested = path.resolve(__dirname, 'LifeOS', '.' + decodeURIComponent(req.path)); }
+    catch (error) { return res.sendStatus(400); }
+    const dataRoot = path.join(__dirname, 'LifeOS', 'data').toLowerCase();
+    const normalized = requested.toLowerCase();
+    if (normalized === dataRoot || normalized.startsWith(dataRoot + path.sep)) {
+        const publicFiles = ['food-nutrition.json', 'character_dialogue_styles.json'].map(name => path.join(dataRoot, name));
+        if (!publicFiles.includes(normalized)) return res.sendStatus(404);
+    }
+    next();
+});
 app.use(express.static(path.join(__dirname, 'LifeOS')));
+
+function withoutDeviceContext(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+    const copy = { ...data };
+    if (Array.isArray(copy.settings)) {
+        copy.settings = copy.settings.filter(row => !String(row && row.key || '').startsWith('contextProjection'));
+    }
+    return copy;
+}
 
 function emptyDB() {
     return {
@@ -33,7 +57,7 @@ function emptyDB() {
 function readDB() {
     try {
         if (fs.existsSync(DB_FILE)) {
-            return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+            return withoutDeviceContext(JSON.parse(fs.readFileSync(DB_FILE, 'utf8')));
         }
     } catch (e) {
         console.error('[LifeOS] Read error:', e.message);
@@ -43,6 +67,7 @@ function readDB() {
 
 function writeDB(data) {
     try {
+        data = withoutDeviceContext(data);
         data._meta = data._meta || {};
         data._meta.lastSaved = new Date().toISOString();
         fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
@@ -58,7 +83,10 @@ function createBackup() {
         if (!fs.existsSync(DB_FILE)) return;
         const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
         const backupFile = path.join(BACKUP_DIR, 'lifeos-backup-' + ts + '.json');
-        fs.copyFileSync(DB_FILE, backupFile);
+        // New backup files are filtered even if the previous DB came from v4.
+        const previous = readDB();
+        if (!previous) return;
+        fs.writeFileSync(backupFile, JSON.stringify(previous, null, 2), 'utf8');
         const files = fs.readdirSync(BACKUP_DIR)
             .filter(f => f.startsWith('lifeos-backup-'))
             .sort().reverse();
@@ -217,8 +245,8 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'LifeOS', 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log('[LifeOS] Server: http://localhost:' + PORT);
+const listener = app.listen(PORT, () => {
+    console.log('[LifeOS] Server: http://localhost:' + listener.address().port);
     console.log('[LifeOS] Data: ' + DB_FILE);
     if (!fs.existsSync(DB_FILE)) {
         writeDB(emptyDB());

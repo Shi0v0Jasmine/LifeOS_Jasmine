@@ -5,6 +5,10 @@
 
 ## 🌐 线上地址（直接用）
 
+源码状态：**v7.0.0 发布候选，未发布**；最近有文档记录的正式发布为 v6.1.1。2026-09-14 只读核验发现线上已包含上下文页面、August 24 缓存（`lifeos-static-v20260824-1`）和 IndexedDB v4，说明存在早期 v7 改动，不能再把线上简单等同于 v6.1.1。当前候选使用 IndexedDB v5，修复上下文导出隐私、缓存归属及跨标签页失效，尚未部署。
+
+恢复密钥与摘要缓存不进入新备份或本机后端快照；服务器过滤旧客户端的私密字段，拒绝直接静态读取数据库/备份文件。旧备份中已存在的敏感字段不会自动清理。测试可通过 `LIFEOS_DATA_DIR` 指定独立后端数据目录，日常运行无需设置。
+
 **https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com**
 
 手机/电脑浏览器均可访问；手机端可「添加到主屏幕」安装为 PWA。详细用法见 `LifeOS/user-manual.md`（用户手册）。
@@ -41,7 +45,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── vendor\                  ← PDF.js / heic2any / UTIF 本地解码依赖
 │   ├── assets\                  ← 静态资源（icons/ 含 PWA 图标 lifeos-app.svg）
 │   └── guide\                   ← 从零构建指南（Step 0-10）+ 架构设计文档
-├── tests\                       ← 数据层/同步/习惯/营养/健康报告回归测试（9 套件）
+├── tests\                       ← 数据层/同步/健康/上下文/后端隐私回归测试（14 套件）
 ├── cloud-functions\ai-proxy\    ← CloudBase 云函数：AI 请求代理（解 CORS）
 ├── server.js                    ← 本机 Express 后端（静态托管 + JSON 持久化 API）
 ├── start.bat                    ← Windows 一键启动
@@ -130,7 +134,7 @@ node server.js
 |------|------|
 | Vue 3 (CDN) | 前端框架（无构建，IIFE + `window.LifeOS`） |
 | 自定义 CSS | 全局样式与水彩/霍格沃茨主题 |
-| IndexedDB | 本地数据持久化（当前 v4） |
+| IndexedDB | 本地数据持久化（源码 v5，v4 迁移保留业务数据与恢复密钥） |
 | CloudBase / Supabase | 多端同步双后端 + 静态托管 + ai-proxy 云函数 |
 | Node.js + Express | 可选本机后端，静态托管 + JSON 文件持久化 API |
 | PWA Service Worker | 三层缓存（静态/数据/运行时），发版必升版本号 |
@@ -144,7 +148,7 @@ node server.js
 
 ### 数据库结构
 ```
-LifeOSDB (IndexedDB v4)
+LifeOSDB (IndexedDB v5)
 ├── timeline        ← 时间轴事件（含 taskId 关联、completed 联动标记）
 ├── tasks           ← 任务（含子任务、循环副本）
 ├── habits          ← 习惯（含 plan/pauses/metrics 字段）
@@ -172,6 +176,11 @@ node tests/sleep-checkin.test.js     # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
 node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
+node tests/context-client.test.js    # 跨语言 AES-GCM 固定向量
+node tests/context-security.test.js  # 上下文隐私/迁移/竞态（8 组）
+node tests/timeline-layout.test.js   # 时间轴布局（4 项）
+node tests/ai-proxy.test.js          # JSON/二进制代理与错误处理
+node tests/backend-privacy.test.js   # 独立临时后端：导出/写入/恢复/静态访问隐私
 ```
 
 后端 smoke test：

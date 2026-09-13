@@ -38,6 +38,25 @@ function json(statusCode, headers, obj) {
     };
 }
 
+function parseRequestBody(event, headers) {
+    var body = event.body;
+    if (body && typeof body === 'object' && !Buffer.isBuffer(body)) return body;
+    if (Buffer.isBuffer(body)) body = body.toString('utf8');
+    var raw = String(body || '');
+    try {
+        return JSON.parse(raw || '{}');
+    } catch (jsonError) {
+        // CloudBase may Base64-wrap an application/octet-stream request before it
+        // reaches the function. Decode only as a fallback so regular JSON keeps
+        // its original behavior.
+        var contentType = String(headers['content-type'] || headers['Content-Type'] || '').toLowerCase();
+        if (event.isBase64Encoded || contentType.indexOf('application/octet-stream') !== -1) {
+            return JSON.parse(Buffer.from(raw, 'base64').toString('utf8') || '{}');
+        }
+        throw jsonError;
+    }
+}
+
 exports.main = async (event) => {
     const reqHeaders = event.headers || {};
     const origin = reqHeaders.origin || reqHeaders.Origin || '';
@@ -50,8 +69,17 @@ exports.main = async (event) => {
         return { statusCode: 204, headers: cors, body: '' };
     }
 
+    let body;
     try {
-        const body = typeof event.body === 'string' ? JSON.parse(event.body || '{}') : (event.body || {});
+        body = parseRequestBody(event, reqHeaders);
+    } catch (err) {
+        // JSON parser errors can echo request fragments containing credentials.
+        return json(400, cors, { error: 'Invalid JSON request body' });
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return json(400, cors, { error: 'Request body must be a JSON object' });
+    }
+    try {
         const { endpoint, apiKey, payload } = body;
 
         if (!endpoint || !apiKey || !payload) {

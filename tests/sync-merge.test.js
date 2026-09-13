@@ -51,12 +51,7 @@ class FakeDB {
         return store;
     }
     transaction(storeNames) {
-        return {
-            objectStore: (name) => {
-                if (!storeNames.includes(name)) throw new Error(`Store ${name} not in transaction`);
-                return this.stores.get(name);
-            }
-        };
+        return require('./helpers/transaction')(storeNames, this.stores);
     }
 }
 

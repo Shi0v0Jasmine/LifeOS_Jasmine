@@ -1069,6 +1069,7 @@
             if (cfg.syncProvider !== 'cloudbase') throw new Error('账号登录仅支持 CloudBase 后端');
             const adapter = await this._ensureAdapter();
             if (!adapter || !adapter.login) throw new Error('CloudBase 后端未就绪');
+            await window.LifeOS.Settings.set('accountUid', '');
             const result = await adapter.login(username, password);
             // 获取登录用户 uid 并存入 settings
             const user = await adapter.getCurrentUser();
@@ -1082,6 +1083,8 @@
 
         async accountLogout() {
             const cfg = this._config || await this._loadConfig();
+            // Invalidate local context before waiting for the SDK/network.
+            await window.LifeOS.Settings.set('accountUid', '');
             if (cfg.syncProvider === 'cloudbase') {
                 const adapter = await this._ensureAdapter();
                 if (adapter && adapter.logout) {

@@ -57,6 +57,9 @@
             box-shadow: var(--shadow-sm); padding: 20px;
         }
         .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+        .archive-card-heading { align-items: center; }
+        .archive-card-heading-copy { min-width: 0; }
+        .archive-import-btn { white-space: nowrap; flex: 0 0 auto; }
         .card-heading h3 { font-size: 1rem; font-family: var(--font-sans); margin: 0; display: flex; align-items: center; gap: 8px; }
         .card-kicker { color: var(--text-muted); font: .74rem var(--font-sans); margin-top: 4px; }
         .privacy-chip, .source-chip, .status-chip {
@@ -321,6 +324,10 @@
             .health-lifestyle-summary { grid-template-columns: 1fr; }
             .report-meta-grid, .report-notes { grid-template-columns: 1fr; }
             .trend-chart { height: 180px; }
+            .archive-card-heading { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 12px; text-align: center; }
+            .archive-card-heading-copy { width: 100%; }
+            .archive-card-heading h3 { justify-content: center; }
+            .archive-import-btn { min-width: 132px; min-height: 42px; }
         }
         @media (max-width: 420px) {
             .header-actions .soft-btn { flex: 1; }
@@ -601,7 +608,7 @@
 
                 <div v-show="activeView === 'archive'" class="health-view">
                     <section class="nutrition-card">
-                        <div class="card-heading"><div><h3>报告档案</h3><p class="card-kicker">只保存已确认的结构化数据，原始 PDF 与图片不会归档</p></div><button class="primary-btn" type="button" @click="activeView = 'overview'">+ 导入报告</button></div>
+                        <div class="card-heading archive-card-heading"><div class="archive-card-heading-copy"><h3>报告档案</h3><p class="card-kicker">只保存已确认的结构化数据，原始 PDF 与图片不会归档</p></div><button class="primary-btn archive-import-btn" type="button" @click="activeView = 'overview'">+ 导入报告</button></div>
                         <div v-if="healthReports.length" class="report-list">
                             <div v-for="report in healthReports" :key="report.id" class="report-row">
                                 <span class="report-row-icon">{{ reportTypeIcon(report.reportType) }}</span><div><div class="report-row-title">{{ report.title }}</div><div class="report-row-meta">{{ report.provider || report.device || reportTypeLabel(report.reportType) }} · {{ report.sourceType === 'pdf' ? 'PDF' : '图片' }} {{ report.pageCount }} 页</div></div><span class="report-row-date">{{ report.date }}</span><span class="report-row-count">{{ report.metrics.length }} 项指标</span><div class="report-actions"><button class="report-link" type="button" @click="openReport(report)">查看</button><button class="danger-btn" type="button" @click="removeHealthReport(report.id)" aria-label="删除报告">×</button></div>

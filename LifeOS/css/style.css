@@ -270,7 +270,7 @@ body::before {
 @media (max-width: 768px) {
     .sidebar { transform: translateX(-100%); transition: transform 0.3s ease; }
     .sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15); }
-    .main-content { margin-left: 0 !important; padding: 16px; padding-top: 68px; /* 给汉堡按钮留位 */ }
+    .main-content { margin-left: 0 !important; width: 100%; min-width: 0; box-sizing: border-box; padding: 16px; padding-top: 68px; /* 给汉堡按钮留位 */ }
     .dashboard-cards { grid-template-columns: repeat(2, 1fr); }
     .card-icon { font-size: 1.5rem; width: 40px; height: 40px; }
     .card-value { font-size: 1.2rem; }

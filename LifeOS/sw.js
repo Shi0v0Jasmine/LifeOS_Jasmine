@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'lifeos-static-v20260811-1';
+const STATIC_CACHE = 'lifeos-static-v20260914-2';
 const DATA_CACHE = 'lifeos-data-v20260730-1';
 const RUNTIME_CACHE = 'lifeos-runtime-v20260730-1';
 
@@ -9,6 +9,7 @@ const STATIC_ASSETS = [
     './tasks.html',
     './habits.html',
     './nutrition.html',
+    './context.html',
     './review.html',
     './learning.html',
     './characters.html',
@@ -16,8 +17,10 @@ const STATIC_ASSETS = [
     './test.html',
     './css/style.css',
     './js/core.js',
+    './js/timeline-layout.js',
     './js/nutrition.js',
     './js/health-reports.js',
+    './js/context-client.js',
     './js/sync.js',
     './js/mobile-nav.js',
     './js/pwa.js',

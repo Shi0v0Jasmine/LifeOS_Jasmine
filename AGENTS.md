@@ -1,7 +1,7 @@
 # LifeOS — Agent 上下文与项目约定
 
 > 本文件供 AI Agent 每次会话启动时读取，快速建立项目上下文。
-> 最后更新：2026-08-01
+> 最后更新：2026-09-14（v7 源码候选，未发布）
 
 ---
 
@@ -30,7 +30,7 @@ D:\FUN_VibeCoding\LifeOS\
 │       ├── index.js             ← CloudBase 云函数：AI 请求代理（解浏览器 CORS）
 │       └── package.json
 ├── tests/
-│   ├── core-data.test.js        ← 数据层回归（11 项）
+│   ├── core-data.test.js        ← 数据层回归（12 项）
 │   ├── subtask.test.js          ← 子任务专项（9 项）
 │   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（35 项）
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
@@ -38,13 +38,20 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
 │   ├── ai-planner-parse.test.js ← AI 规划解析（8 项）
 │   ├── nutrition.test.js        ← 饮食/营养计算/隐私边界（9 项）
-│   └── health-report.test.js    ← 健康报告解析/趋势/隐私边界（8 项）
+│   ├── health-report.test.js    ← 健康报告解析/趋势/隐私边界（8 项）
+│   ├── context-client.test.js   ← 跨语言 AES-GCM 固定向量
+│   ├── context-security.test.js ← 上下文隐私/迁移/竞态（8 组）
+│   ├── timeline-layout.test.js  ← 时间轴布局（4 项）
+│   ├── ai-proxy.test.js         ← JSON/二进制代理与错误处理
+│   ├── backend-privacy.test.js  ← 独立临时后端隐私测试
+│   └── helpers/transaction.js   ← 测试替身的事务完成事件
 └── LifeOS/                      ← 应用主目录（部署到 CloudBase 静态托管的内容）
     ├── index.html               ← Dashboard 首页
     ├── timeline.html            ← 时间轴
     ├── tasks.html               ← 任务管理
     ├── habits.html              ← 习惯打卡
     ├── nutrition.html           ← 健康（报告/指标趋势/餐食/运动/目标/周报）
+    ├── context.html             ← 个人上下文只读摘要
     ├── review.html              ← 每日回顾
     ├── learning.html            ← 学习日记
     ├── characters.html          ← 角色库
@@ -61,6 +68,8 @@ D:\FUN_VibeCoding\LifeOS\
     │   ├── core.js              ← 数据层：DAO + 预置角色 + AIClient/AIPlanner（79KB）
     │   ├── nutrition.js         ← 饮食/运动 DAO + 营养计算/解析引擎
     │   ├── health-reports.js    ← 健康报告解析引擎 + 结构化档案 DAO
+    │   ├── context-client.js    ← 密文投影解密/归属校验/离线缓存
+    │   ├── timeline-layout.js   ← 时间区间与碰撞布局
     │   ├── db.js                ← IndexedDB 底层封装
     │   ├── sync.js              ← 多端同步引擎（push/pull/LWW/冲突队列/设备管理/账号登录）
     │   ├── utils.js             ← 工具函数（日期/UUID/四象限/JSON 解析）
@@ -111,7 +120,7 @@ D:\FUN_VibeCoding\LifeOS\
 1. **无构建步骤**：纯 HTML/CSS/JS，禁用 `import/export`、禁用 ES Module `<script type="module">`。
 2. **Vue 3 CDN 全局版**：`vue.global.js`，IIFE + `window.LifeOS` 暴露模块。
 3. **日期格式统一**：全程 `YYYY-MM-DD` 字符串，避免 `new Date()` 时区问题。
-4. **IndexedDB 版本**：当前 v4，升级必须写迁移逻辑并覆盖旧数据。
+4. **IndexedDB 版本**：当前源码 v5，线上已记录版本 v4；升级必须写迁移逻辑并覆盖旧数据。
 5. **软删除**：业务记录删除改墓碑（`deletedAt`），同步时传播。
 6. **所有写操作打戳**：`updatedAt` + `updatedBy`（deviceId），同步归因需要。
 7. **CSS 变量系统**：颜色用 `var(--color-*)`，不硬编码。
@@ -137,7 +146,7 @@ D:\FUN_VibeCoding\LifeOS\
 
 ```bash
 cd D:/FUN_VibeCoding/LifeOS
-node tests/core-data.test.js      # 数据层回归（11 项）
+node tests/core-data.test.js      # 数据层回归（12 项）
 node tests/subtask.test.js        # 子任务专项（9 项）
 node tests/sync-merge.test.js     # 同步引擎（35 项）
 node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
@@ -146,6 +155,11 @@ node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
 node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
+node tests/context-client.test.js
+node tests/context-security.test.js
+node tests/timeline-layout.test.js
+node tests/ai-proxy.test.js
+node tests/backend-privacy.test.js
 ```
 
 ### 本地运行
@@ -179,18 +193,26 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current / Latest**：`v6.1.1`（2026-08-11 发布）
+- **Current source**：`v7.0.0`（当前候选未发布）；最近有文档记录的正式发布：`v6.1.1`（2026-08-11）。2026-09-14 核验公共文件发现线上已有 context.html、`lifeos-static-v20260824-1`、IndexedDB v4；视为早期改动部署，完整发布状态仍待确认。
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
-- **IndexedDB 版本**：v4
-- **SW 缓存版本**：`lifeos-static-v20260811-1`
+- **IndexedDB 源码版本**：v5（v4 → v5 保留业务记录与恢复密钥，清理旧上下文缓存）
+- **SW 源码缓存版本**：`lifeos-static-v20260914-2`
+
+### v7 发布准备约定
+
+- `context.html` / `js/context-client.js` 是只读密文摘要窗口；`contextProjection*` 设置只留当前设备，不进入 JSON 导出、本机后端快照或导入恢复。
+- 缓存绑定环境、账号、密钥指纹和本机修订号。账号/环境/密钥变化必须原子失效缓存；异步写回必须使用 `Database.contextState` 比对修订号。
+- `tests/context-security.test.js`（8 组隐私/迁移/竞态）及 `backend-privacy.test.js` 必须运行，连同其他专项共 14 套件。真实浏览器另测事务 abort，不以请求 success 代替事务 complete。
+- 本机服务通过 `LIFEOS_DATA_DIR` 可指定测试隔离目录；服务器过滤 contextProjection 设置和新备份，静态 data 目录仅公开两份参考 JSON，历史备份不自动重写。
+- 本轮仅修复并准备，**不部署、不提交、不推送**。发布前仍需验证 CloudBase 投影集合权限、签名写入函数配置、owner UID 和真实多设备行为。
 
 ---
 
 ## 8. 发版检查清单
 
 ```
-□ 测试套件全绿：core-data / subtask / sync-merge / ai-planner-parse / habit-plan / habit-metrics / sleep-checkin / nutrition / health-report
+□ 测试套件全绿：tests/*.test.js（共 14 套件，含 context-client / context-security / timeline-layout / ai-proxy / backend-privacy）
 □ 浏览器 Ctrl+F5 验证主要页面无 JS 报错
 □ 若动了数据层：IndexedDB 版本 +1 且迁移覆盖旧数据
 □ sw.js 缓存版本号 +1

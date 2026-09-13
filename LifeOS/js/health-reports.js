@@ -253,7 +253,7 @@
 
     async function renderPdfPage(page) {
         var viewport = page.getViewport({ scale: 1.8 });
-        var scale = Math.min(1, 1600 / viewport.width);
+        var scale = Math.min(1, 1600 / Math.max(viewport.width, viewport.height));
         if (scale < 1) viewport = page.getViewport({ scale: 1.8 * scale });
         var canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width);
@@ -289,7 +289,10 @@
                 }
                 return {
                     sourceType: 'images', pageCount: images.length,
-                    batches: chunk(images, 2).map(function (items, index) {
+                    // One visual page per request keeps even detailed reports below
+                    // CloudBase's 6 MB binary request limit and improves extraction
+                    // accuracy for small tables.
+                    batches: chunk(images, 1).map(function (items, index) {
                         return { kind: 'images', images: items, label: '图片批次 ' + (index + 1) };
                     })
                 };
@@ -312,7 +315,7 @@
             var batches = chunk(textPages, 4).map(function (items, index) {
                 return { kind: 'text', text: items.map(function (v) { return v.text; }).join('\n'), label: 'PDF 文字批次 ' + (index + 1) };
             });
-            batches = batches.concat(chunk(imagePages, 2).map(function (items, index) {
+            batches = batches.concat(chunk(imagePages, 1).map(function (items, index) {
                 return { kind: 'images', images: items.map(function (v) { return v.image; }), label: 'PDF 扫描页批次 ' + (index + 1) };
             }));
             return { sourceType: 'pdf', pageCount: pdf.numPages, batches: batches };
@@ -334,7 +337,8 @@
                     messages: HealthReportEngine.messages(prepared.batches[i]),
                     responseFormat: { type: 'json_object' },
                     temperature: 0.1,
-                    maxTokens: 3500
+                    maxTokens: 3500,
+                    timeoutMs: 120000
                 });
                 results.push(HealthReportEngine.parseAnalysis(AIClient.extractText(response)));
             }

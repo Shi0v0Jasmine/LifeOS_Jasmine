@@ -24,7 +24,8 @@ class FakeIndexedDB {
                 this.databases.set(name, db);
             }
             if (oldVersion < version && request.onupgradeneeded) {
-                request.onupgradeneeded({ target: { result: db, oldVersion } });
+                request.onupgradeneeded({ oldVersion, target: { result: db, transaction: db.transaction(Array.from(db.objectStoreNames)) } });
+                db.version = version;
             }
             request.result = db;
             if (request.onsuccess) request.onsuccess();
@@ -49,12 +50,7 @@ class FakeDB {
     }
 
     transaction(storeNames) {
-        return {
-            objectStore: (name) => {
-                if (!storeNames.includes(name)) throw new Error(`Store ${name} not in transaction`);
-                return this.stores.get(name);
-            }
-        };
+        return require('./helpers/transaction')(storeNames, this.stores);
     }
 }
 
@@ -141,11 +137,13 @@ class FakeStore {
     }
 }
 
-function loadLifeOS(fetchImpl) {
+function loadLifeOS(fetchImpl, options = {}) {
     const context = {
-        window: {},
+        window: options.window || {},
         console,
-        indexedDB: new FakeIndexedDB(),
+        indexedDB: options.indexedDB || new FakeIndexedDB(),
+        navigator: options.navigator || { onLine: true },
+        TextEncoder, TextDecoder, Buffer,
         crypto: {
             randomUUID: (() => {
                 let counter = 0;
@@ -172,6 +170,7 @@ function loadLifeOS(fetchImpl) {
     vm.createContext(context);
     const corePath = path.join(__dirname, '..', 'LifeOS', 'js', 'core.js');
     vm.runInContext(fs.readFileSync(corePath, 'utf8'), context, { filename: corePath });
+    if (options.contextClient) vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'LifeOS/js/context-client.js'), 'utf8'), context);
     return context.window.LifeOS;
 }
 
@@ -442,6 +441,31 @@ async function testAIClientRoutesViaConfiguredProxy() {
     assert.strictEqual(calls[0].options.headers.Authorization, 'Bearer test-key');
 }
 
+async function testAIClientCloudBaseProxyUsesBinaryContentType() {
+    const calls = [];
+    const LifeOS = loadLifeOS((url, options) => {
+        calls.push({ url, options });
+        return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            text: () => Promise.resolve(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' } }] }))
+        });
+    });
+    await LifeOS.Database.init();
+    await LifeOS.Database.reset();
+    await LifeOS.Settings.set('apiBaseUrl', 'https://api.example.test/v1');
+    await LifeOS.Settings.set('apiKey', 'test-key');
+    await LifeOS.Settings.set('apiModel', 'vision-test');
+    await LifeOS.Settings.set('aiProxyUrl', 'https://lifeos-test.ap-shanghai.app.tcloudbase.com/ai-proxy');
+
+    await LifeOS.AIClient.complete('test', { retries: 0 });
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0].options.headers['Content-Type'], 'application/octet-stream');
+    assert.strictEqual(calls[0].options.headers.Authorization, undefined);
+}
+
 async function testAIClientRequiresConfiguration() {
     const LifeOS = loadLifeOS(() => {
         throw new Error('fetch should not be called without config');
@@ -494,10 +518,11 @@ const tests = [
     testAIClientSendsOpenAICompatibleChatRequest,
     testAIClientRetriesRetryableFailures,
     testAIClientRoutesViaConfiguredProxy,
+    testAIClientCloudBaseProxyUsesBinaryContentType,
     testAIClientRequiresConfiguration
 ];
 
-(async () => {
+if (require.main === module) (async () => {
     for (const test of tests) {
         await test();
         console.log(`PASS ${test.name}`);
@@ -507,3 +532,4 @@ const tests = [
     console.error(error.stack);
     process.exit(1);
 });
+module.exports = { loadLifeOS, FakeIndexedDB };

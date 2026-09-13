@@ -1,7 +1,43 @@
 # Life OS — 开发日志（Dev Log）
 
+## v7.0.0 — 本地发布准备（2026-09-14，未发布）
+
+- 继续复核：本机服务器统一过滤旧客户端/旧备份中的上下文字段，新增备份同样过滤，静态 data 目录只公开参考数据；新增 backend-privacy 专项，共 14 测试套件通过。
+- 上下文身份/缓存写入改为事务 complete 后返回成功；原生浏览器注入 abort 确认拒绝且无误广播。显式账号验证失败清除缓存，避免稍后离线显示旧摘要。
+- 扩展合成健康报告测试，文本 PDF/扫描 PDF/TIFF 预处理通过；SW 更新为 `lifeos-static-v20260914-2`。
+- 只读核验线上发现 August 24 SW、IndexedDB v4 及上下文页面，已修正文档“线上仍纯 v6.1.1”的假定；当前 v5 候选未部署。
+
+- IndexedDB v5 迁移保留业务记录和恢复密钥，丢弃旧摘要缓存；`contextProjection*` 禁止进入导出/后端快照，导入忽略外来密钥和缓存。
+- 在共享数据层原子失效账号、环境、同步后端或密钥变更前的缓存；使用修订号校验异步写回，BroadcastChannel 只广播失效信号，清除其他标签页正在显示的摘要。
+- 离线缓存仅供同环境/账号/密钥的已验证设备会话使用；新增缓存时间、非今日摘要标记、部分失败提示和错误态清除密钥入口。
+- AI 代理修复无效 JSON 被判为上游 502 以及可能回显凭据片段的问题；兼容普通 JSON、Buffer 和网关 Base64 请求。
+- 新增 `context-security.test.js`；浏览器使用独立 origin、合成记录和模拟云端，真实测试 IndexedDB 迁移、AES-GCM、跨标签页失效和离线页面。真实 CloudBase、手机设备和上游 AI 仍为发布前检查。
+- SW 更新至 `lifeos-static-v20260914-1`；本轮不部署、不提交、不推送。
+
+---
+
+## v7.0.0 — 移动端 UI 修复补丁（2026-08-24）
+
+- 时间轴新增可测试的 `js/timeline-layout.js`：只在真实相交的事件组中分栏；相接事件恢复全宽。移动端短事件按实际分钟高度绘制并采用紧凑内容，避免最小 24px 卡片压住下一事件。
+- 健康“报告档案”在手机端改为标题说明整行、`+ 导入报告` 独立居中的单行操作区；桌面端保持同排。
+- 全局移动端 `.main-content` 补齐 `width:100%`/`min-width:0`，修复设置页被长表单撑出横向滚动；`settings.html` 的样式地址增加版本参数以立即获得该 CSS 修复。
+- 新增 `tests/timeline-layout.test.js`（相接、短间隔、真实重叠、跨天睡眠），390px 首屏与主要功能态巡检截图保存于独立 Codex QA 目录。
+- Service Worker 静态缓存升级为 `lifeos-static-v20260824-1`。
+
+---
+
+## v7.0.0 — Personal Context 只读窗口（源码完成，未发布，2026-08-17）
+
+- 新增 `context.html` 与 `js/context-client.js`，作为独立 Personal Context Infrastructure 的跨设备摘要窗口；完整检索、授权审批与运维仍留在 `127.0.0.1:8765` 本机控制台。
+- 只读取 CloudBase 独立 `context_projections` 集合，并在浏览器端使用 AES-256-GCM 解密；recovery code 仅保存在当前设备 IndexedDB `settings`，不参加 LifeOS 同步。
+- 页面只展示今日摘要、待办和采集器状态，不使用 iframe，不读取或修改原始聊天/文档，不允许远程审批敏感内容。
+- `mobile-nav.js` 增加“上下文”入口；Service Worker 缓存升级为 `lifeos-static-v20260817-1`，并加入新页面与客户端脚本。
+- 新增 `tests/context-client.test.js`，使用 Python/WebCrypto 共用固定向量验证 AES-GCM、错误密钥拒绝与 recovery code 解析。
+
+---
+
 > **日期**: 2026-07-08  
-> **当前版本**: v6.1.0（已发布；本章旧记 v1.x，对照见 VERSIONING.md）
+> **当前源码版本**: v7.0.0（未发布；线上仍为 v6.1.1）
 > **最后更新**: 【2026-08-01】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`

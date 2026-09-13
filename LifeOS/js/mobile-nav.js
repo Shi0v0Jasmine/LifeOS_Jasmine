@@ -65,6 +65,7 @@
         if (document.getElementById(BTN_ID)) return; // 幂等
 
         injectNutritionLink();
+        injectContextLink();
 
         var btn = document.createElement('button');
         btn.id = BTN_ID;
@@ -117,6 +118,23 @@
         } else {
             nav.appendChild(link);
         }
+    }
+
+    /* v7.0.0：个人上下文只读摘要入口。完整控制台仍留在本机。 */
+    function injectContextLink() {
+        var nav = document.querySelector('.sidebar-nav');
+        if (!nav || nav.querySelector('a[href="context.html"]')) return;
+
+        var page = currentPage();
+        var link = document.createElement('a');
+        link.href = 'context.html';
+        link.className = 'nav-item' + (page === 'context.html' ? ' active' : '');
+        link.setAttribute('data-nav-id', 'context');
+        link.innerHTML = '<span class="nav-icon" aria-hidden="true">⌁</span><span class="nav-text">上下文</span>';
+
+        var nutrition = nav.querySelector('a[href="nutrition.html"]');
+        if (nutrition && nutrition.nextSibling) nav.insertBefore(link, nutrition.nextSibling);
+        else nav.appendChild(link);
     }
 
     /* v4.2.0 M1：底部 Tab Bar（仅 ≤768px 由 CSS 显示，桌面端不影响） */

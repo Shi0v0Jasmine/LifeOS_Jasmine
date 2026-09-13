@@ -14,6 +14,7 @@
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
     <script src="js/core.js?v=1.2"></script>
+    <script src="js/timeline-layout.js"></script>
     <script src="js/sync.js"></script>
     <script src="js/mobile-nav.js"></script>
     <script src="js/pwa.js"></script>
@@ -241,6 +242,10 @@
             .time-slot { height: var(--timeline-slot-height); }
             .time-label { height: var(--timeline-slot-height); font-size: 0.62rem; }
             .time-label:nth-child(even) { visibility: hidden; }
+            /* 短事件严格按真实时段高度绘制，避免最小卡片高度侵入下一事件。 */
+            .timeline-event.compact-event { min-height: 0; padding: 1px 6px; }
+            .timeline-event.compact-event .event-title { font-size: .65rem; line-height: 1.05; }
+            .timeline-event.compact-event .event-time { display: none; }
         }
     </style>
 </head>
@@ -354,7 +359,7 @@
                                 >
                                     <span class="slot-plus">+</span>
                                 </div>
-                                <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                <div v-for="evt in processedPlannedEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed, 'compact-event': isCompactEvent(evt) }]" :style="getEventStyle(evt)" :title="`${evt.title}（${evt.startTime} - ${evt.endTime}）`" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
                                     <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}<span v-if="sleepDurationText(evt)">（{{ sleepDurationText(evt) }}）</span></div>
                                 </div>
@@ -375,7 +380,7 @@
                                 <div v-for="slot in timeSlots" :key="slot.time" class="time-slot" @click="openAddEvent('actual', slot)">
                                     <span class="slot-plus">+</span>
                                 </div>
-                                <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed }]" :style="getEventStyle(evt)" @click.stop="openEditEvent(evt)">
+                                <div v-for="evt in processedActualEvents" :key="evt.id" class="timeline-event" :class="[getCategoryClass(evt.category), { 'task-done': evt.completed, 'compact-event': isCompactEvent(evt) }]" :style="getEventStyle(evt)" :title="`${evt.title}（${evt.startTime} - ${evt.endTime}）`" @click.stop="openEditEvent(evt)">
                                     <div class="event-title">{{ evt.title }}</div>
                                     <div class="event-time">{{ evt.startTime }} - {{ evt.endTime }}<span v-if="sleepDurationText(evt)">（{{ sleepDurationText(evt) }}）</span></div>
                                 </div>
@@ -1094,71 +1099,27 @@
                     if (viewMode.value === 'month') await loadMonthData();
                 };
 
-                const assignOverlapColumns = (events) => {
-                    if (!events || !events.length) return [];
-                    const evts = events.map(e => {
-                        const start = timeToMinutes(e.startTime);
-                        let end = timeToMinutes(e.endTime);
-                        if (end <= start) end += 24 * 60;
-                        return { ...e, _start: start, _end: end };
-                    });
-                    evts.sort((a, b) => a._start - b._start);
-                    const activeColumns = [];
-                    for (const evt of evts) {
-                        let col = -1;
-                        for (let i = 0; i < activeColumns.length; i++) {
-                            if (activeColumns[i] <= evt._start) {
-                                col = i;
-                                activeColumns[i] = evt._end;
-                                break;
-                            }
-                        }
-                        if (col === -1) {
-                            col = activeColumns.length;
-                            activeColumns.push(evt._end);
-                        }
-                        evt._column = col;
-                    }
-                    for (const evt of evts) {
-                        let maxCol = evt._column;
-                        for (const other of evts) {
-                            if (evt.id === other.id) continue;
-                            if (evt._start < other._end && evt._end > other._start) {
-                                maxCol = Math.max(maxCol, other._column);
-                            }
-                        }
-                        evt._totalColumns = maxCol + 1;
-                    }
-                    return evts;
-                };
+                const assignOverlapColumns = (events) => LifeOS.TimelineLayout.assignOverlapColumns(events);
 
                 const processedPlannedEvents = computed(() => assignOverlapColumns(plannedEvents.value));
                 const processedActualEvents = computed(() => assignOverlapColumns(actualEvents.value));
 
                 const getEventStyle = (evt) => {
-                    // F-123：跨天睡眠块（startTime > endTime）在起床日从 00:00 渲染到起床时间
-                    let startStr = evt.startTime;
-                    if (evt.category === 'sleep' && !evt.sleepOpen && evt.startTime > evt.endTime) {
-                        startStr = '00:00';
-                    }
-                    const start = parseTime(startStr);
-                    const end = parseTime(evt.endTime);
-                    let duration = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
-                    if (duration < 0) duration += 24 * 60;
-                    const topSlots = start.hour * 2 + start.minute / 30;
-                    const heightSlots = duration / 30;
+                    const metrics = LifeOS.TimelineLayout.getRenderMetrics(evt);
                     const col = evt._column || 0;
                     const total = evt._totalColumns || 1;
                     const leftPercent = (col / total) * 100;
                     const widthPercent = 100 / total;
                     return {
-                        top: `calc(${topSlots} * var(--timeline-slot-height))`,
-                        height: `max(24px, calc(${heightSlots} * var(--timeline-slot-height)))`,
+                        top: `calc(${metrics.topSlots} * var(--timeline-slot-height))`,
+                        height: `calc(${metrics.heightSlots} * var(--timeline-slot-height))`,
                         '--event-left': `${leftPercent}%`,
                         '--event-width': `calc(${widthPercent}% - 8px)`,
                         right: 'auto'
                     };
                 };
+
+                const isCompactEvent = (evt) => LifeOS.TimelineLayout.getRenderMetrics(evt).duration < 30;
 
                 const toggleWeekday = (idx) => {
                     if (!eventForm.value.repeatRule || eventForm.value.repeatRule.type !== 'weekly') return;
@@ -1402,7 +1363,7 @@
                     timerRunning, timerDisplay, timerEventName, timerMode, pomodoroPhase, pomodoroProgress, pomodoroPhaseLabel,
                     showPomodoroXPDialog, pomodoroSkillId, pomodoroXP, pomodoroElapsed, pomodoroMinutes, skills,
                     statsPeriod, statsIncludeUnrecorded, statsLoading, statsData, pieChartStyle,
-                    getEventStyle, getCategoryClass, getCategoryColor, parseTime,
+                    getEventStyle, isCompactEvent, getCategoryClass, getCategoryColor, parseTime,
                     openAddEvent, openEditEvent, closeEventModal, saveEvent, deleteEvent,
                     startTimer, stopTimer, toggleWeekday, assignPomodoroXP, closePomodoroDialog,
                     onTaskDragStart, onTaskDragEnd, onSlotDragEnter, onSlotDragOver, onSlotDragLeave, onTaskDrop,

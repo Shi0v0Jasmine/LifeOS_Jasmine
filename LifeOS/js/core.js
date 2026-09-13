@@ -81,7 +81,15 @@
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
                     let w = img.width, h = img.height;
-                    if (w > maxWidth) { h = (h * maxWidth) / w; w = maxWidth; }
+                    // maxWidth is historically named, but report screenshots are often
+                    // very tall. Cap the longest edge so a narrow, long screenshot
+                    // cannot produce an unexpectedly huge Base64 request.
+                    const longestEdge = Math.max(w, h);
+                    if (longestEdge > maxWidth) {
+                        const scale = maxWidth / longestEdge;
+                        w = Math.max(1, Math.round(w * scale));
+                        h = Math.max(1, Math.round(h * scale));
+                    }
                     canvas.width = w; canvas.height = h;
                     ctx.drawImage(img, 0, 0, w, h);
                     resolve(canvas.toDataURL('image/jpeg', quality));
@@ -189,11 +197,23 @@
     // ============================================================
     // 参与多端同步的业务 store（settings 为设备本地配置，不同步）
     const SYNC_STORES = ['tasks', 'timeline', 'habits', 'habitRecords', 'reviews', 'skills', 'notes', 'characters', 'moments', 'nutrition'];
+    const isContextLocalSetting = key => String(key || '').startsWith('contextProjection');
+    const CONTEXT_IDENTITY_SETTINGS = ['accountUid', 'cloudbaseEnvId', 'syncProvider', 'contextProjectionKey'];
+    // Only invalidation signals cross tabs; never keys or decrypted payloads.
+    const contextChannel = typeof window.BroadcastChannel === 'function'
+        ? new window.BroadcastChannel('lifeos-context-invalidated') : null;
+    function notifyContextInvalidated(broadcast = true) {
+        if (window.dispatchEvent && typeof window.Event === 'function') {
+            window.dispatchEvent(new window.Event('lifeos-context-invalidated'));
+        }
+        if (broadcast && contextChannel) contextChannel.postMessage('invalidate');
+    }
+    if (contextChannel) contextChannel.onmessage = () => notifyContextInvalidated(false);
 
     class Database {
         constructor() {
             this.dbName = 'LifeOSDB';
-            this.version = 4;
+            this.version = 5;
             this.db = null;
             this._initPromise = null;
             this._deviceIdPromise = null;
@@ -344,6 +364,13 @@
             if (!db.objectStoreNames.contains('settings')) {
                 db.createObjectStore('settings', { keyPath: 'key' });
             }
+            // v5: keep keys/business data, discard summaries lacking trusted ownership.
+            if (oldVersion < 5 && preExistingStores.has('settings')) {
+                const s = transaction ? transaction.objectStore('settings') : db.transaction(['settings'], 'readwrite').objectStore('settings');
+                s.delete('contextProjectionCache');
+                s.delete('contextProjectionIdentity');
+                s.put({ key: 'contextProjectionRevision', value: Utils.generateId(), updatedAt: Utils.now() });
+            }
             // moments: 特殊事件
             if (!db.objectStoreNames.contains('moments')) {
                 const s = db.createObjectStore('moments', { keyPath: 'id' });
@@ -390,6 +417,25 @@
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readwrite');
                 const store = tx.objectStore(storeName);
+                if (storeName === 'settings' && CONTEXT_IDENTITY_SETTINGS.includes(data.key)) {
+                    let changed = false, result;
+                    tx.oncomplete = () => { if (changed) notifyContextInvalidated(); resolve(result); };
+                    const previous = store.get(data.key);
+                    previous.onerror = () => reject(previous.error);
+                    previous.onsuccess = () => {
+                        changed = JSON.stringify(previous.result && previous.result.value) !== JSON.stringify(data.value);
+                        if (changed) {
+                            store.delete('contextProjectionCache');
+                            store.delete('contextProjectionIdentity');
+                            store.put({ key: 'contextProjectionRevision', value: Utils.generateId(), updatedAt: Utils.now() });
+                        }
+                        const write = store.put(data);
+                        write.onerror = () => reject(write.error);
+                        write.onsuccess = () => { result = write.result; };
+                    };
+                    tx.onabort = () => reject(tx.error || new Error('Settings transaction aborted'));
+                    return;
+                }
                 const req = store.put(data);
                 req.onsuccess = () => resolve(req.result);
                 req.onerror = () => reject(req.error);
@@ -459,8 +505,16 @@
             return new Promise((resolve, reject) => {
                 const tx = this.db.transaction([storeName], 'readwrite');
                 const store = tx.objectStore(storeName);
+                const invalidates = storeName === 'settings' && CONTEXT_IDENTITY_SETTINGS.includes(id);
+                if (invalidates) {
+                    tx.oncomplete = () => { notifyContextInvalidated(); resolve(); };
+                    tx.onabort = () => reject(tx.error || new Error('Settings transaction aborted'));
+                    store.delete('contextProjectionCache');
+                    store.delete('contextProjectionIdentity');
+                    store.put({ key: 'contextProjectionRevision', value: Utils.generateId(), updatedAt: Utils.now() });
+                }
                 const req = store.delete(id);
-                req.onsuccess = () => resolve();
+                req.onsuccess = () => { if (!invalidates) resolve(); };
                 req.onerror = () => reject(req.error);
             });
         }
@@ -532,9 +586,52 @@
             return this.put('settings', { key, value, updatedAt: Utils.now() });
         }
 
+        // Compare and save within ONE IDB transaction: a late network response
+        // cannot recreate a cache invalidated by another page/account/key change.
+        async contextState(expected = null, update = null) {
+            await this.init();
+            const writes = update ? Object.entries(update) : [];
+            if (writes.some(([key]) => !['contextProjectionIdentity', 'contextProjectionCache'].includes(key))) {
+                throw new Error('Invalid context state field');
+            }
+            return new Promise((resolve, reject) => {
+                const tx = this.db.transaction(['settings'], update ? 'readwrite' : 'readonly');
+                let state;
+                tx.oncomplete = () => resolve(state);
+                const store = tx.objectStore('settings');
+                const request = store.getAll();
+                tx.onabort = () => reject(tx.error || new Error('Context transaction aborted'));
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const values = Object.fromEntries(request.result.map(row => [row.key, row.value]));
+                    state = {
+                        envId: String(values.cloudbaseEnvId || '').trim(),
+                        ownerUid: values.accountUid || '',
+                        provider: values.syncProvider || 'none',
+                        keyInfo: values.contextProjectionKey || null,
+                        revision: values.contextProjectionRevision || '',
+                        identity: values.contextProjectionIdentity || null,
+                        cache: values.contextProjectionCache || null
+                    };
+                    const signature = value => JSON.stringify([value.envId, value.ownerUid, value.provider, value.keyInfo, value.revision]);
+                    if (expected && signature(state) !== signature(expected)) {
+                        const error = new Error('账号或密钥已变化，请重新加载摘要');
+                        error.code = 'STALE_CONTEXT'; reject(error); return;
+                    }
+                    if (!update) return;
+                    for (let index = 0; index < writes.length; index++) {
+                        const [key, value] = writes[index];
+                        const write = store.put({ key, value, updatedAt: Utils.now() });
+                        write.onerror = () => reject(write.error);
+                    }
+                };
+            });
+        }
+
         // ---- 重置数据库：清空所有数据，保留结构 ----
         async reset() {
             await this.init();
+            await this.setSetting('contextProjectionKey', null);
             const stores = Array.from(this.db.objectStoreNames);
             for (const name of stores) {
                 await new Promise((resolve, reject) => {
@@ -555,6 +652,7 @@
             const result = { _meta: { version: this.version, exportedAt: Utils.now(), app: 'LifeOS' } };
             for (const name of stores) {
                 result[name] = await this.getAll(name);
+                if (name === 'settings') result[name] = result[name].filter(row => !isContextLocalSetting(row.key));
             }
             return result;
         }
@@ -570,10 +668,12 @@
                     // 清空
                     const all = await this.getAll(name);
                     for (const item of all) {
+                        if (name === 'settings' && isContextLocalSetting(item.key)) continue;
                         await this.delete(name, item.id || item.date || item.key);
                     }
                 }
                 for (const item of data[name]) {
+                    if (name === 'settings' && isContextLocalSetting(item.key)) continue;
                     try {
                         await this.put(name, item);
                     } catch (e) {
@@ -1900,7 +2000,12 @@
             const fetchBody = proxyUrl
                 ? JSON.stringify({ endpoint, apiKey: config.apiKey, payload })
                 : JSON.stringify(payload);
-            const fetchHeaders = { 'Content-Type': 'application/json' };
+            // CloudBase treats application/json as a text request (100 KB limit).
+            // Its HTTP function gateway permits the larger binary-request limit for
+            // image-bearing AI requests. The body is still UTF-8 JSON; ai-proxy
+            // decodes either gateway representation before parsing it.
+            const isCloudBaseHttpProxy = proxyUrl && /\.app\.tcloudbase\.com(?:\/|$)/i.test(proxyUrl);
+            const fetchHeaders = { 'Content-Type': isCloudBaseHttpProxy ? 'application/octet-stream' : 'application/json' };
             if (!proxyUrl) fetchHeaders['Authorization'] = `Bearer ${config.apiKey}`;
 
             let lastError = null;

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#7DD3FC">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+    <title>LifeOS · 上下文</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.js"></script>
+    <script src="js/core.js?v=1.3"></script>
+    <script src="js/sync.js"></script>
+    <script src="js/context-client.js?v=2.0"></script>
+    <script src="js/mobile-nav.js"></script>
+    <script src="js/pwa.js"></script>
+    <style>
+        [v-cloak] { display: none; }
+        .context-page { width: 100%; max-width: 1320px; margin: 0 auto; }
+        .context-header { align-items: flex-start; }
+        .context-header-copy { max-width: 720px; }
+        .context-header-copy p { margin: 7px 0 0; color: var(--text-muted); font: .78rem/1.6 var(--font-sans); }
+        .header-actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+        .context-btn { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 9px 14px; color: var(--text-secondary); background: var(--bg-card); text-decoration: none; cursor: pointer; font: .78rem var(--font-sans); }
+        .context-btn.primary { border-color: var(--color-ravenclaw-blue); color: var(--text-inverse); background: var(--color-ravenclaw-blue); }
+        .context-btn:disabled { opacity: .5; cursor: not-allowed; }
+        .context-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr); gap: 18px; }
+        .context-card { padding: 20px; border: 1px solid var(--border-card); border-radius: var(--radius-lg); background: var(--bg-card); backdrop-filter: blur(12px); box-shadow: var(--shadow-sm); }
+        .context-card.full { grid-column: 1 / -1; }
+        .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
+        .card-heading h3 { margin: 0; font: 600 1rem var(--font-sans); }
+        .card-kicker { margin-top: 4px; color: var(--text-muted); font: .7rem var(--font-sans); }
+        .privacy-badge, .source-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font: .68rem var(--font-sans); }
+        .privacy-badge { background: var(--color-mint-light); color: var(--color-mint-deep); }
+        .source-badge { background: var(--color-water-light); color: var(--color-water-deep); }
+        .digest-lead { margin: 4px 0 18px; color: var(--text-primary); font: 500 1.02rem/1.8 var(--font-serif); }
+        .digest-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 17px; }
+        .digest-stat { padding: 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--text-inverse); }
+        .digest-stat strong, .digest-stat span { display: block; }
+        .digest-stat strong { color: var(--color-ravenclaw-blue); font: 600 1.15rem var(--font-sans); }
+        .digest-stat span { margin-top: 4px; color: var(--text-muted); font: .66rem var(--font-sans); }
+        .signal-list, .action-list, .collector-list { display: grid; gap: 8px; }
+        .signal-row, .action-row, .collector-row { padding: 11px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--text-inverse); }
+        .signal-row strong, .collector-row strong { display: block; font: 600 .8rem var(--font-sans); }
+        .signal-row p { margin: 5px 0 0; color: var(--text-secondary); font: .74rem/1.55 var(--font-sans); }
+        .action-row { display: flex; gap: 9px; align-items: flex-start; }
+        .action-dot { width: 9px; height: 9px; margin-top: 4px; flex: 0 0 auto; border: 2px solid var(--color-water-deep); border-radius: 50%; }
+        .action-row div { min-width: 0; }
+        .action-row strong { display: block; font: 500 .8rem/1.45 var(--font-sans); }
+        .action-row small { display: block; margin-top: 4px; color: var(--text-muted); font: .65rem var(--font-sans); }
+        .collector-row { display: grid; grid-template-columns: 9px 1fr auto; align-items: center; gap: 10px; }
+        .collector-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-mint-deep); }
+        .collector-dot.unknown { background: var(--color-gold-deep); }
+        .collector-row span:last-child { color: var(--text-muted); font: .67rem var(--font-sans); }
+        .key-panel { display: grid; gap: 12px; }
+        .key-panel p { margin: 0; color: var(--text-secondary); font: .76rem/1.65 var(--font-sans); }
+        .key-input { width: 100%; padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); background: var(--text-inverse); font: .75rem var(--font-mono, monospace); outline: none; }
+        .key-input:focus { border-color: var(--color-water-deep); box-shadow: 0 0 0 3px rgba(2,132,199,.08); }
+        .key-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+        .state-panel { padding: 46px 24px; text-align: center; }
+        .state-icon { width: 54px; height: 54px; margin: 0 auto 13px; display: grid; place-items: center; border-radius: 50%; background: var(--color-water-light); font-size: 1.35rem; }
+        .state-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+        .state-panel p { max-width: 520px; margin: 0 auto; color: var(--text-muted); font: .76rem/1.65 var(--font-sans); }
+        .state-panel .key-panel { max-width: 600px; margin: 18px auto 0; text-align: left; }
+        .warning-strip { margin-bottom: 16px; padding: 10px 12px; border: 1px solid var(--color-gold-light); border-radius: var(--radius-md); background: var(--color-gold-light); color: var(--color-gold-deep); font: .7rem/1.5 var(--font-sans); }
+        .empty-copy { padding: 22px 8px; text-align: center; color: var(--text-muted); font: .75rem/1.6 var(--font-sans); }
+        .security-note { margin-top: 14px; color: var(--text-muted); font: .67rem/1.55 var(--font-sans); }
+        @media (max-width: 1000px) { .context-layout { grid-template-columns: 1fr; } .context-card.full { grid-column: auto; } }
+        @media (max-width: 768px) {
+            .context-header { gap: 12px; }
+            .context-header, .header-actions { align-items: stretch; }
+            .header-actions { width: 100%; }
+            .header-actions .context-btn { flex: 1 1 140px; text-align: center; }
+            .context-layout { gap: 12px; }
+            .context-card { padding: 16px; }
+            .digest-stats { grid-template-columns: 1fr 1fr; }
+            .digest-stat:last-child { grid-column: 1 / -1; }
+        }
+    </style>
+</head>
+<body>
+<div id="app" v-cloak>
+    <sidebar active-page="context"></sidebar>
+    <main class="main-content">
+        <div class="context-page">
+            <header class="page-header context-header">
+                <div class="context-header-copy">
+                    <h2>个人上下文</h2>
+                    <p>跨设备只读摘要窗口。原始聊天、文档正文、附件和审批操作始终留在 Windows 本机。</p>
+                </div>
+                <div class="header-actions">
+                    <button class="context-btn" @click="load" :disabled="loading">{{ loading ? '刷新中…' : '刷新密文摘要' }}</button>
+                    <button class="context-btn" @click="clearKey">清除此设备密钥</button>
+                    <a class="context-btn primary" href="http://127.0.0.1:8765" target="_blank" rel="noopener">打开本机控制台</a>
+                </div>
+            </header>
+
+            <section v-if="loading" class="context-card state-panel">
+                <div class="state-icon">⌁</div><h3>正在解密本设备摘要</h3><p>密钥不会离开此设备，CloudBase 只提供密文。</p>
+            </section>
+
+            <section v-else-if="needsKey || errorCode === 'DECRYPT_FAILED'" class="context-card state-panel">
+                <div class="state-icon">🔐</div>
+                <h3>{{ errorCode === 'DECRYPT_FAILED' ? 'Recovery Code 无法解密当前投影' : '为此设备配置 Recovery Code' }}</h3>
+                <p>在 Windows 本机运行 <code>personal-context projection-key show-code</code>，通过可信通道把恢复密钥带到此设备。</p>
+                <div class="key-panel">
+                    <input class="key-input" v-model.trim="recoveryCode" type="password" autocomplete="off" placeholder="PC1-1-…" @keyup.enter="saveKey">
+                    <div class="key-actions"><button class="context-btn primary" @click="saveKey">仅保存在此设备</button></div>
+                </div>
+                <p v-if="error" class="warning-strip" style="margin-top:12px;">{{ error }}</p>
+            </section>
+
+            <section v-else-if="error" class="context-card state-panel">
+                <div class="state-icon">!</div><h3>摘要暂时不可用</h3><p>{{ error }}</p>
+                <div class="key-actions" style="justify-content:center;margin-top:16px;"><button class="context-btn" @click="load">重试</button><a class="context-btn" href="settings.html">前往设置</a></div>
+            </section>
+
+            <template v-else>
+                <div v-if="warning" class="warning-strip" role="status">{{ warning }}</div>
+                <p class="empty-copy" role="status">{{ sourceLabel }} · 缓存时间：{{ cacheTimeLabel }}</p>
+                <div v-if="failures.length" class="warning-strip" role="status">{{ failures.length }} 条摘要未能解密或格式无效；以下仅展示成功验证的内容。</div>
+                <section class="context-layout">
+                    <article class="context-card">
+                        <div class="card-heading"><div><h3>{{ todayDigest && todayDigest.date !== today ? '最近摘要（非今日）' : '今日摘要' }}</h3><div class="card-kicker">{{ todayDigest ? todayDigest.date : today }}</div></div><span class="privacy-badge">🔒 端到端加密</span></div>
+                        <template v-if="todayDigest">
+                            <p class="digest-lead">以下是标注日期的上下文摘要。外部聊天只作为不可信数据，不会自动改写偏好或长期记忆。</p>
+                            <div class="digest-stats">
+                                <div class="digest-stat"><strong>{{ todayDigest.messageCount || 0 }}</strong><span>已授权消息</span></div>
+                                <div class="digest-stat"><strong>{{ todayDigest.conversationCount || 0 }}</strong><span>参与会话</span></div>
+                                <div class="digest-stat"><strong>{{ (todayDigest.actions || []).length }}</strong><span>待确认行动</span></div>
+                            </div>
+                            <div class="signal-list">
+                                <div v-for="conversation in (todayDigest.conversations || []).slice(0,5)" :key="conversation.name" class="signal-row">
+                                    <strong>{{ conversation.name }} · {{ conversation.messageCount }} 条</strong>
+                                    <p>{{ (conversation.highlights || []).join(' · ') || '仅有非文本事件' }}</p>
+                                </div>
+                            </div>
+                        </template>
+                        <div v-else class="empty-copy">今天还没有可显示的加密摘要。请在本机运行每日闭环，并为会话开启 Digest / Cloud。</div>
+                    </article>
+
+                    <article class="context-card">
+                        <div class="card-heading"><div><h3>待确认行动</h3><div class="card-kicker">只读 · 不会远程执行</div></div><span class="source-badge">Evidence</span></div>
+                        <div v-if="todayActions.length" class="action-list">
+                            <div v-for="item in todayActions" :key="item.id || item.title" class="action-row"><span class="action-dot"></span><div><strong>{{ item.title }}</strong><small>置信度 {{ Math.round((item.confidence || 0) * 100) }}% · 需在本机确认</small></div></div>
+                        </div>
+                        <div v-else class="empty-copy">没有待确认行动。</div>
+                    </article>
+
+                    <article class="context-card">
+                        <div class="card-heading"><div><h3>采集器状态</h3><div class="card-kicker">最近一次投影</div></div></div>
+                        <div class="collector-list">
+                            <div class="collector-row"><span :class="['collector-dot', { unknown: !collectorStatus.wechat }]"></span><strong>微信增量采集</strong><span>{{ collectorStatus.wechat || '等待本机状态投影' }}</span></div>
+                            <div class="collector-row"><span :class="['collector-dot', { unknown: !collectorStatus.filesystem }]"></span><strong>文件元数据目录</strong><span>{{ collectorStatus.filesystem || '等待本机状态投影' }}</span></div>
+                            <div class="collector-row"><span class="collector-dot"></span><strong>密文摘要</strong><span>{{ sourceLabel }}</span></div>
+                        </div>
+                    </article>
+
+                    <article class="context-card">
+                        <div class="card-heading"><div><h3>此设备密钥</h3><div class="card-kicker">settings · 不参与同步</div></div><span class="privacy-badge">v{{ keyVersion }}</span></div>
+                        <div class="key-panel"><p>轮换密钥后，可通过页面顶部清除旧密钥并重新输入 Recovery Code。清除会同时移除此设备的离线摘要缓存。Recovery Code 是可重复使用的恢复密钥，请妥善保管。</p></div>
+                        <p class="security-note">本页不能批准敏感内容、修改 Context 或上传原始数据。手机上的 localhost 不是 Windows 主机；完整检索与运维请在主机上打开控制台。</p>
+                    </article>
+                </section>
+            </template>
+        </div>
+    </main>
+</div>
+<script>
+    const { createApp, ref, computed } = Vue;
+    const Sidebar = {
+        props: { activePage: { type: String, default: 'context' } },
+        setup(props) {
+            const sidebarCollapsed = ref(false);
+            const navItems = [
+                { id: 'dashboard', name: '仪表盘', url: 'index.html', icon: '▦' },
+                { id: 'timeline', name: '时间轴', url: 'timeline.html', icon: '◷' },
+                { id: 'tasks', name: '任务', url: 'tasks.html', icon: '☑' },
+                { id: 'habits', name: '习惯', url: 'habits.html', icon: '✓' },
+                { id: 'nutrition', name: '健康', url: 'nutrition.html', icon: '♡' },
+                { id: 'context', name: '上下文', url: 'context.html', icon: '⌁' },
+                { id: 'review', name: '回顾', url: 'review.html', icon: '◫' },
+                { id: 'learning', name: '学习', url: 'learning.html', icon: '◇' },
+                { id: 'characters', name: '角色库', url: 'characters.html', icon: '♙' },
+                { id: 'settings', name: '设置', url: 'settings.html', icon: '⚙' }
+            ];
+            return { sidebarCollapsed, navItems, props };
+        },
+        template: `<aside class="sidebar" :class="{ collapsed: sidebarCollapsed }"><div class="sidebar-header"><h1 class="app-title" v-show="!sidebarCollapsed">LifeOS</h1><span class="app-title-collapsed" v-show="sidebarCollapsed">O</span><button class="toggle-btn" @click="sidebarCollapsed=!sidebarCollapsed">{{ sidebarCollapsed ? '→' : '←' }}</button></div><nav class="sidebar-nav" aria-label="主导航"><a v-for="item in navItems" :key="item.id" :href="item.url" :class="['nav-item',{active:item.id===props.activePage}]"><span class="nav-icon">{{ item.icon }}</span><span class="nav-text" v-show="!sidebarCollapsed">{{ item.name }}</span></a></nav></aside>`
+    };
+
+    LifeOS.Sync.init();
+    createApp({
+        components: { Sidebar },
+        setup() {
+            const loading = ref(true), needsKey = ref(false), error = ref(''), errorCode = ref('');
+            const warning = ref(''), source = ref(''), projections = ref([]), recoveryCode = ref(''), keyVersion = ref(1);
+            const cachedAt = ref(null), failures = ref([]);
+            let loadGeneration = 0;
+            const cacheTimeLabel = computed(() => cachedAt.value ? new Date(cachedAt.value).toLocaleString('zh-CN', { hour12: false }) : '无');
+            const today = LifeOS.Utils.formatDate();
+            const todayDigest = computed(() => {
+                const sameDay = projections.value.find(item => item.kind === 'daily-digest' && item.date === today);
+                const latest = projections.value.find(item => item.kind === 'daily-digest');
+                const chosen = sameDay || latest;
+                return chosen ? Object.assign({}, chosen.payload, { date: chosen.date }) : null;
+            });
+            const todayActions = computed(() => (todayDigest.value && todayDigest.value.actions) || []);
+            const collectorStatus = computed(() => {
+                const item = projections.value.find(row => row.kind === 'collector-status');
+                return item ? item.payload : {};
+            });
+            const sourceLabel = computed(() => source.value === 'cloudbase' ? 'CloudBase 密文' : source.value === 'offline-cache' ? '离线缓存' : source.value === 'stale-cache' ? '过期缓存' : '未同步');
+
+            async function load() {
+                const generation = ++loadGeneration;
+                projections.value = []; cachedAt.value = null; failures.value = [];
+                loading.value = true; error.value = ''; errorCode.value = ''; warning.value = '';
+                try {
+                    await LifeOS.Database.init();
+                    const key = await LifeOS.Settings.get('contextProjectionKey', null);
+                    keyVersion.value = key && key.keyVersion ? key.keyVersion : 1;
+                    const result = await LifeOS.ContextClient.loadProjections();
+                    if (generation !== loadGeneration) return;
+                    projections.value = result.items || []; source.value = result.source; warning.value = result.warning || '';
+                    cachedAt.value = result.cachedAt; failures.value = result.failures || [];
+                    needsKey.value = false;
+                } catch (err) {
+                    if (generation !== loadGeneration) return;
+                    errorCode.value = err.code || '';
+                    needsKey.value = err.code === 'KEY_REQUIRED';
+                    error.value = err.message || String(err);
+                } finally { if (generation === loadGeneration) loading.value = false; }
+            }
+            async function saveKey() {
+                try { const result = await LifeOS.ContextClient.setRecoveryCode(recoveryCode.value); keyVersion.value = result.keyVersion; recoveryCode.value = ''; await load(); }
+                catch (err) { error.value = err.message; errorCode.value = 'KEY_REQUIRED'; }
+            }
+            function invalidateView() {
+                ++loadGeneration; projections.value = []; cachedAt.value = null; failures.value = [];
+                loading.value = false; needsKey.value = false; errorCode.value = 'STALE_CONTEXT';
+                error.value = '账号或密钥已变化，请刷新摘要';
+            }
+            async function clearKey() {
+                invalidateView();
+                try { await LifeOS.ContextClient.clearRecoveryCode(); needsKey.value = true; error.value = ''; errorCode.value = ''; }
+                catch (err) { error.value = '清除密钥失败，请重试'; }
+            }
+            window.addEventListener('lifeos-context-invalidated', invalidateView);
+            window.addEventListener('pageshow', event => { if (event.persisted) { invalidateView(); load(); } });
+            document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { invalidateView(); load(); } });
+            load();
+            return { loading, needsKey, error, errorCode, warning, source, projections, recoveryCode, keyVersion, today, todayDigest, todayActions, collectorStatus, sourceLabel, cachedAt, cacheTimeLabel, failures, load, saveKey, clearKey };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
