@@ -1,7 +1,7 @@
 # LifeOS — Agent 上下文与项目约定
 
 > 本文件供 AI Agent 每次会话启动时读取，快速建立项目上下文。
-> 最后更新：2026-09-14（v7 源码候选，未发布）
+> 最后更新：2026-10-01（v6.2.0 发布候选，未发布；Personal Context 暂缓、v7 编号保留）
 
 ---
 
@@ -30,7 +30,7 @@ D:\FUN_VibeCoding\LifeOS\
 │       ├── index.js             ← CloudBase 云函数：AI 请求代理（解浏览器 CORS）
 │       └── package.json
 ├── tests/
-│   ├── core-data.test.js        ← 数据层回归（12 项）
+│   ├── core-data.test.js        ← 数据层回归（19 项，含 init 容错路径）
 │   ├── subtask.test.js          ← 子任务专项（9 项）
 │   ├── sync-merge.test.js       ← 同步引擎合并逻辑 + 双后端 + 设备管理 + 账号（35 项）
 │   ├── habit-plan.test.js       ← 习惯周期计划与暂停（7 项）
@@ -38,7 +38,7 @@ D:\FUN_VibeCoding\LifeOS\
 │   ├── sleep-checkin.test.js    ← 起床/睡觉打卡（3 项）
 │   ├── ai-planner-parse.test.js ← AI 规划解析（8 项）
 │   ├── nutrition.test.js        ← 饮食/营养计算/隐私边界（9 项）
-│   ├── health-report.test.js    ← 健康报告解析/趋势/隐私边界（8 项）
+│   ├── health-report.test.js    ← 健康报告解析/导入/重试/隐私边界（14 项）
 │   ├── context-client.test.js   ← 跨语言 AES-GCM 固定向量
 │   ├── context-security.test.js ← 上下文隐私/迁移/竞态（8 组）
 │   ├── timeline-layout.test.js  ← 时间轴布局（4 项）
@@ -146,7 +146,7 @@ D:\FUN_VibeCoding\LifeOS\
 
 ```bash
 cd D:/FUN_VibeCoding/LifeOS
-node tests/core-data.test.js      # 数据层回归（12 项）
+node tests/core-data.test.js      # 数据层回归（19 项，含 init 容错路径）
 node tests/subtask.test.js        # 子任务专项（9 项）
 node tests/sync-merge.test.js     # 同步引擎（35 项）
 node tests/habit-plan.test.js     # 习惯周期计划与暂停（7 项）
@@ -154,7 +154,7 @@ node tests/habit-metrics.test.js  # 习惯度量/AI 解析/数据面板（5 项�
 node tests/sleep-checkin.test.js  # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
-node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
+node tests/health-report.test.js     # 健康报告解析/导入/重试/隐私边界（14 项）
 node tests/context-client.test.js
 node tests/context-security.test.js
 node tests/timeline-layout.test.js
@@ -193,19 +193,20 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 
 ## 7. 当前版本与状态
 
-- **Current source**：`v7.0.0`（当前候选未发布）；最近有文档记录的正式发布：`v6.1.1`（2026-08-11）。2026-09-14 核验公共文件发现线上已有 context.html、`lifeos-static-v20260824-1`、IndexedDB v4；视为早期改动部署，完整发布状态仍待确认。
+- **Current source**：`v6.2.0`（发布候选，未发布；Personal Context 暂缓、v7.0.0 编号保留）。最近有文档记录的正式发布：`v6.1.1`（2026-08-11）。2026-09-14 核验公共文件发现线上已有 context.html、`lifeos-static-v20260824-1`、IndexedDB v4；视为早期改动部署，完整发布状态仍待确认。
 - **线上地址**：https://lifeos-d5gxoyi3o79a3518c-1456250880.tcloudbaseapp.com
 - **CloudBase 环境**：`lifeos-d5gxoyi3o79a3518c`（上海，免费体验版）
 - **IndexedDB 源码版本**：v5（v4 → v5 保留业务记录与恢复密钥，清理旧上下文缓存）
-- **SW 源码缓存版本**：`lifeos-static-v20260914-2`
+- **SW 源码缓存版本**：`lifeos-static-v20260930-1`
 
-### v7 发布准备约定
+### 发布准备约定（v6.2.0 候选；Personal Context 暂缓）
 
-- `context.html` / `js/context-client.js` 是只读密文摘要窗口；`contextProjection*` 设置只留当前设备，不进入 JSON 导出、本机后端快照或导入恢复。
-- 缓存绑定环境、账号、密钥指纹和本机修订号。账号/环境/密钥变化必须原子失效缓存；异步写回必须使用 `Database.contextState` 比对修订号。
-- `tests/context-security.test.js`（8 组隐私/迁移/竞态）及 `backend-privacy.test.js` 必须运行，连同其他专项共 14 套件。真实浏览器另测事务 abort，不以请求 success 代替事务 complete。
+- **2026-10-01 用户决定：Personal Context 本次暂缓**（不是废弃，v7.0.0 编号保留给它的正式发布）——投影集合、签名写入云函数、密钥配置、recovery code、双设备投影复测本次全部不做；本次发版按小版本（MINOR）处理，编号 v6.2.0。云端曾临时创建的两个投影空集合已删除回收。
+- `context.html` / `js/context-client.js` 代码**保留休眠随包发布**：不删除、无导航入口，集合缺失时页面走错误态。`contextProjection*` 设置仍不进入导出/快照（隐私边界继续有效）。
+- `tests/context-security.test.js`（8 组隐私/迁移/竞态）及 `backend-privacy.test.js` 继续运行，连同其他专项共 14 套件。真实浏览器另测事务 abort，不以请求 success 代替事务 complete。
 - 本机服务通过 `LIFEOS_DATA_DIR` 可指定测试隔离目录；服务器过滤 contextProjection 设置和新备份，静态 data 目录仅公开两份参考 JSON，历史备份不自动重写。
-- 本轮仅修复并准备，**不部署、不提交、不推送**。发布前仍需验证 CloudBase 投影集合权限、签名写入函数配置、owner UID 和真实多设备行为。
+- 候选基线 `6ca332b` 已按用户授权推送 GitHub。**v6.2.0 发布内容**：上下文隐私加固与 IndexedDB v5 迁移（基线已提交）+ 健康报告导入增强 + 数据库初始化容错（2026-09-30，init 处理 onblocked/VersionError/超时并弹横幅，修"推版看似丢数据"，待提交）。发布走第 8 节常规清单。
+- 2026-09-30 数据复盘：云端同步集合完好，但手机设备（dev-6fc3e968e96a）最后成功同步停在 2026-08-19；云端 81 条业务记录已导出为 `data/lifeos-backup-cloud-2026-09-30.json` 保底。用户确认 9 月本就没什么新数据，手机端不再追救。
 
 ---
 
@@ -229,7 +230,7 @@ node "C:/Users/21136/AppData/Local/npm-cache/_npx/9a8789722ddc2fbe/node_modules/
 ## 9. 已知坑与备忘
 
 1. **Origin 数据孤岛**：IndexedDB 按 origin 隔离，`file://` / `localhost:3000` / `localhost:8000` / 部署域名各自独立。用户必须固定一种访问方式。
-2. **Service Worker 更新滞后**：新部署后旧 SW 可能仍在控制页面，需关闭全部标签页/PWA 后重开，或 Ctrl+Shift+R。
+2. **Service Worker 更新滞后**：新部署后旧 SW 可能仍在控制页面，需关闭全部标签页/PWA 后重开，或 Ctrl+Shift+R。2026-09-30 起已有代码级缓解：`Database.init()` 处理 onblocked/VersionError/超时并弹提示横幅（不再"静默空白"），SW 接管时 pwa.js 弹刷新提示——推版 + IndexedDB 升级期间的表现是明确提示而非看似丢数据。
 3. **CloudBase CLI 授权**：Windows 下必须设置 `XDG_CONFIG_HOME`，否则每次运行都触发 device flow。
 4. **iOS Safari 小字号 date 输入框**：不渲染占位文字，需用 `type="text"` / `type="date"` 聚焦切换模式。
 5. **移动端弹窗裁剪**：`.modal` 需 `max-height: calc(100dvh - 40px)` + `overflow-y: auto`。

@@ -43,7 +43,7 @@ function createLifeOS(aiOverrides = {}) {
     const context = vm.createContext({ window: { LifeOS }, console, Number, String, Object, Array, Set, Map, Math, Date, JSON, Error });
     const source = fs.readFileSync(path.join(__dirname, '..', 'LifeOS', 'js', 'health-reports.js'), 'utf8');
     vm.runInContext(source, context);
-    return { LifeOS, records };
+    return { LifeOS, records, context };
 }
 
 async function testParseHealthReportAnalysis() {
@@ -139,7 +139,102 @@ async function testPageIncludesLocalDecodersAndPrivacyCopy() {
     assert.ok(html.includes('健康总览'));
 }
 
+async function testExpandedImportValidation() {
+    const { LifeOS } = createLifeOS();
+    const files = LifeOS.HealthReportFiles;
+    const image = { name: 'scan.HEIC', size: 30 * 1024 * 1024, type: '' };
+    assert.strictEqual(files.validate([image, { name: 'report.PDF', size: 10, type: '' }]).kind, 'mixed');
+    assert.strictEqual(files.validate(Array.from({ length: 12 }, () => ({ ...image, size: 100 }))).files.length, 12);
+    assert.throws(() => files.validate([{ name: 'report.docx', size: 12, type: '' }]), /report.docx.*不支持/);
+    assert.throws(() => files.validate([{ ...image, size: 51 * 1024 * 1024 }]), /50MB/);
+    assert.throws(() => files.validate(Array.from({ length: 6 }, () => image)), /150MB/);
+    assert.throws(() => files.validate([{ ...image, size: 0 }]), /文件为空/);
+}
+
+async function testPdfTextAndMixedFilesPreservePages() {
+    const { LifeOS, context } = createLifeOS();
+    let destroyed = 0;
+    const longText = 'A'.repeat(31000) + 'END_MARKER';
+    context.window.pdfjsLib = {
+        GlobalWorkerOptions: {},
+        getDocument() { return { promise: Promise.resolve({
+            numPages: 2,
+            async getPage(number) { return { async getTextContent() { return { items: [{ str: number === 1 ? longText : 'B'.repeat(100) }] }; } }; },
+            async destroy() { destroyed++; }
+        }) }; }
+    };
+    const file = name => ({ name, size: 1, type: '', async arrayBuffer() { return new ArrayBuffer(1); } });
+    const prepared = await LifeOS.HealthReportFiles.prepare([file('part1.pdf'), file('part2.pdf')]);
+    assert.strictEqual(prepared.pageCount, 4);
+    assert.strictEqual(destroyed, 2);
+    assert.strictEqual(prepared.batches.filter(b => b.page === 1).map(b => b.text).join(''), '[第1页] ' + longText);
+    assert.ok(prepared.batches.some(b => b.page === 4));
+    assert.ok(prepared.batches.every(b => b.text.length <= 12000));
+    context.window.pdfjsLib.getDocument = () => ({ promise: Promise.resolve({ numPages: 101, async destroy() { destroyed++; } }) });
+    await assert.rejects(() => LifeOS.HealthReportFiles.prepare([file('oversize.pdf')]), /oversize.pdf.*100/);
+    assert.strictEqual(destroyed, 3);
+}
+
+async function testRetryKeepsCompletedBatches() {
+    let calls = 0;
+    const { LifeOS } = createLifeOS({ async chat() {
+        calls++;
+        if (calls === 2) throw new Error('synthetic timeout');
+        return { choices: [{ message: { content: JSON.stringify({ metrics: [{ name: 'BMI', value: '22' }] }) } }] };
+    } });
+    const prepared = { sourceType: 'pdf', pageCount: 2, batches: [
+        { kind: 'text', text: 'one', page: 1 }, { kind: 'text', text: 'two', page: 2 }
+    ] };
+    await assert.rejects(() => LifeOS.HealthReports.analyzePrepared(prepared), /可重试/);
+    const result = await LifeOS.HealthReports.analyzePrepared(prepared);
+    assert.strictEqual(calls, 3);
+    assert.deepStrictEqual(Array.from(result.metrics, m => m.page), [1, 2]);
+}
+
+async function testEmptyAnalysisCanRetryAndStopsDiscardResults() {
+    let calls = 0, stopped = false;
+    const { LifeOS } = createLifeOS({ async chat() {
+        calls++;
+        return { choices: [{ message: { content: JSON.stringify({ metrics: calls === 1 ? [] : [{ name: 'BMI', value: '22' }] }) } }] };
+    } });
+    const prepared = { sourceType: 'images', pageCount: 1, batches: [{ kind: 'images', images: [], page: 1 }] };
+    await assert.rejects(() => LifeOS.HealthReports.analyzePrepared(prepared), /未识别/);
+    assert.strictEqual((await LifeOS.HealthReports.analyzePrepared(prepared)).metrics.length, 1);
+    assert.strictEqual(calls, 2);
+    stopped = true;
+    await assert.rejects(() => LifeOS.HealthReports.analyzePrepared(prepared, null, { shouldStop: () => stopped }), e => e.name === 'AbortError');
+    assert.strictEqual(calls, 2);
+    const pending = createLifeOS({ async chat() { stopped = true; return { choices: [{ message: { content: '{"metrics":[{"name":"BMI","value":"23"}]}' } }] }; } });
+    stopped = false;
+    await assert.rejects(() => pending.LifeOS.HealthReports.analyzePrepared(prepared, null, { shouldStop: () => stopped }), e => e.name === 'AbortError');
+}
+
+async function testMixedDatesAndTruncationRejected() {
+    let calls = 0;
+    const { LifeOS } = createLifeOS({ async chat() {
+        calls++;
+        return { choices: [{ message: { content: JSON.stringify({ reportDate: calls === 1 ? '2026-08-01' : '2026-08-02', metrics: [{ name: 'BMI', value: '22' }] }) } }] };
+    } });
+    await assert.rejects(() => LifeOS.HealthReports.analyzePrepared({ batches: [{ kind: 'text' }, { kind: 'text' }] }), /多个报告日期/);
+    const truncated = createLifeOS({ async chat() { return { choices: [{ finish_reason: 'length', message: { content: '{"metrics":[]}' } }] }; } });
+    await assert.rejects(() => truncated.LifeOS.HealthReports.analyzePrepared({ batches: [{ kind: 'text' }] }), /截断/);
+}
+
+async function testImageDimensionGuardBeforeTiffAllocation() {
+    const { LifeOS, context } = createLifeOS();
+    let decoded = false;
+    context.window.UTIF = { decode: () => [{ width: 100000, height: 100000 }], decodeImage() { decoded = true; } };
+    await assert.rejects(() => LifeOS.HealthReportFiles.prepare([{ name: 'oversize.tif', size: 10, async arrayBuffer() { return new ArrayBuffer(10); } }]), /像素/);
+    assert.strictEqual(decoded, false);
+}
+
 const tests = [
+    testEmptyAnalysisCanRetryAndStopsDiscardResults,
+    testMixedDatesAndTruncationRejected,
+    testImageDimensionGuardBeforeTiffAllocation,
+    testExpandedImportValidation,
+    testPdfTextAndMixedFilesPreservePages,
+    testRetryKeepsCompletedBatches,
     testParseHealthReportAnalysis,
     testCanonicalMetricAliases,
     testMergeAnalysisDeduplicatesMetrics,

@@ -10,27 +10,61 @@ class ObjectStoreNames extends Array {
 }
 
 class FakeIndexedDB {
-    constructor() {
+    // 失败注入选项（用于 Database.init() 容错路径测试）：
+    //   failOpen: Error        → open 触发 onerror（request.error = 该错误）
+    //   hangOpen: true         → open 永不回调（模拟无限挂起）
+    //   blockOpen: true        → 升级触发 onblocked 后停止（模拟被旧标签页连接阻塞）
+    //   blockThenSuccess: true → 与 blockOpen 连用：onblocked 后下一轮照常完成（旧标签页关闭）
+    //   versionError: true     → 请求版本低于已存在版本时触发 onerror（VersionError 语义）
+    constructor(options = {}) {
         this.databases = new Map();
+        this.options = options;
+        this.openRequests = [];
     }
 
     open(name, version) {
         const request = {};
+        this.openRequests.push(request);
+        const opts = this.options || {};
+        if (opts.hangOpen) return request; // 永不回调
         setTimeout(() => {
-            let db = this.databases.get(name);
-            const oldVersion = db ? db.version : 0;
-            if (!db) {
-                db = new FakeDB(name, version);
-                this.databases.set(name, db);
+            if (opts.failOpen) {
+                request.error = opts.failOpen;
+                if (request.onerror) request.onerror();
+                return;
             }
-            if (oldVersion < version && request.onupgradeneeded) {
-                request.onupgradeneeded({ oldVersion, target: { result: db, transaction: db.transaction(Array.from(db.objectStoreNames)) } });
-                db.version = version;
+            const existing = this.databases.get(name);
+            const existingVersion = existing ? existing.version : 0;
+            if (opts.versionError && existing && existingVersion > version) {
+                request.error = new Error('less than existing version');
+                request.error.name = 'VersionError';
+                if (request.onerror) request.onerror();
+                return;
             }
-            request.result = db;
-            if (request.onsuccess) request.onsuccess();
+            if (opts.blockOpen && !request._mockBlockedFired) {
+                request._mockBlockedFired = true;
+                if (request.onblocked) request.onblocked();
+                if (opts.blockThenSuccess) setTimeout(() => this._completeOpen(request, name, version), 0);
+                return;
+            }
+            this._completeOpen(request, name, version);
         }, 0);
         return request;
+    }
+
+    _completeOpen(request, name, version) {
+        let db = this.databases.get(name);
+        const oldVersion = db ? db.version : 0;
+        if (!db) {
+            db = new FakeDB(name, version);
+            this.databases.set(name, db);
+        }
+        if (oldVersion < version && request.onupgradeneeded) {
+            request.onupgradeneeded({ oldVersion, target: { result: db, transaction: db.transaction(Array.from(db.objectStoreNames)) } });
+            db.version = version;
+        }
+        request.result = db;
+        if (request.onsuccess) request.onsuccess();
     }
 }
 
@@ -152,7 +186,11 @@ function loadLifeOS(fetchImpl, options = {}) {
         },
         Blob: class Blob {},
         URL: { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} },
-        document: { createElement: () => ({ click() {} }) },
+        document: options.document || {
+            createElement: () => ({ click() {}, appendChild() {}, addEventListener() {}, remove() {} }),
+            body: { appendChild() {} },
+            getElementById: () => null
+        },
         setTimeout,
         clearTimeout,
         AbortController: global.AbortController,
@@ -507,6 +545,158 @@ async function testTaskCompletionSyncsTimelineEvents() {
     assert.strictEqual((await LifeOS.Database.get('tasks', lone.id)).completed, true);
 }
 
+// ---- Database.init() 容错路径（推版/升级/旧缓存场景）----
+
+function createBannerDocumentStub() {
+    const byId = new Map();
+    const makeEl = () => {
+        const el = {
+            children: [],
+            listeners: {},
+            appendChild(child) { el.children.push(child); },
+            addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
+            remove() { byId.delete(el.id); }
+        };
+        return el;
+    };
+    return {
+        byId,
+        createElement: () => makeEl(),
+        body: { appendChild(el) { byId.set(el.id, el); } },
+        getElementById: (id) => byId.get(id) || null
+    };
+}
+
+function findBannerButton(banner, text) {
+    for (const section of banner.children) {
+        for (const el of section.children) {
+            if (el.textContent === text) return el;
+        }
+    }
+    return null;
+}
+
+async function testInitErrorClearsCachedPromiseAndAllowsRetry() {
+    const fake = new FakeIndexedDB({ failOpen: new Error('db closed unexpectedly') });
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    LifeOS.Database._openTimeoutMs = 500;
+
+    await assert.rejects(
+        () => LifeOS.Database.init(),
+        (error) => error.code === 'DB_OPEN_FAILED' && error.name === 'DatabaseOpenError',
+        'open 失败必须以 DB_OPEN_FAILED reject'
+    );
+    assert.strictEqual(LifeOS.Database._initPromise, null, '失败后必须清空缓存的 init promise 以允许重试');
+    assert.ok(doc.byId.get('lifeos-db-banner'), '失败后必须出现全局提示横幅');
+
+    fake.options.failOpen = null;
+    const db = await LifeOS.Database.init();
+    assert.ok(db, '条件恢复后重试 init 应当成功');
+    assert.ok(!doc.byId.get('lifeos-db-banner'), '成功后必须撤下横幅');
+}
+
+async function testInitBlockedShowsBannerAndRejectsWithBlockedCode() {
+    const fake = new FakeIndexedDB({ blockOpen: true });
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    LifeOS.Database._openTimeoutMs = 50;
+
+    await assert.rejects(
+        () => LifeOS.Database.init(),
+        (error) => error.code === 'DB_BLOCKED' && error.name === 'BlockedError',
+        'blocked 挂起超时后必须以 DB_BLOCKED reject（而非无限等待）'
+    );
+    const banner = doc.byId.get('lifeos-db-banner');
+    assert.ok(banner, 'blocked 时必须立即显示等待横幅');
+    assert.ok(findBannerButton(banner, '重试') && findBannerButton(banner, '刷新页面'), '横幅必须带重试与刷新按钮');
+}
+
+async function testInitBlockedThenOldTabClosesResolvesAndClearsBanner() {
+    const fake = new FakeIndexedDB({ blockOpen: true, blockThenSuccess: true });
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    LifeOS.Database._openTimeoutMs = 1000;
+
+    const db = await LifeOS.Database.init();
+    assert.ok(db, '旧标签页关闭后 open 应当照常成功');
+    assert.ok(!doc.byId.get('lifeos-db-banner'), '成功后等待横幅必须撤下');
+}
+
+async function testInitHangTimesOutWithTimeoutCode() {
+    const fake = new FakeIndexedDB({ hangOpen: true });
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    LifeOS.Database._openTimeoutMs = 50;
+
+    await assert.rejects(
+        () => LifeOS.Database.init(),
+        (error) => error.code === 'DB_TIMEOUT' && error.name === 'TimeoutError',
+        'open 无限挂起必须在超时后以 DB_TIMEOUT reject'
+    );
+    assert.strictEqual(LifeOS.Database._initPromise, null, '超时失败后同样允许重试');
+}
+
+async function testInitVersionErrorGuidesHardRefresh() {
+    const fake = new FakeIndexedDB({ versionError: true });
+    fake.databases.set('LifeOSDB', new FakeDB('LifeOSDB', 6)); // 本地库已是更高版本（旧代码碰新库）
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    LifeOS.Database._openTimeoutMs = 500;
+
+    await assert.rejects(
+        () => LifeOS.Database.init(),
+        (error) => error.code === 'DB_VERSION',
+        '旧代码打开更高版本库必须以 DB_VERSION reject 并提示强刷'
+    );
+    assert.ok(doc.byId.get('lifeos-db-banner'), '版本冲突必须弹出提示横幅');
+}
+
+async function testVersionChangeShowsRefreshBannerWithoutClosingConnection() {
+    const fake = new FakeIndexedDB();
+    const doc = createBannerDocumentStub();
+    const LifeOS = loadLifeOS(null, { indexedDB: fake, document: doc });
+    await LifeOS.Database.init();
+
+    const fakeDb = fake.databases.get('LifeOSDB');
+    assert.strictEqual(typeof fakeDb.onversionchange, 'function', '必须挂载 onversionchange 处理');
+    fakeDb.onversionchange();
+
+    const banner = doc.byId.get('lifeos-db-banner');
+    assert.ok(banner, 'versionchange 必须弹出刷新提示横幅');
+    assert.ok(findBannerButton(banner, '刷新页面'), '提示必须带刷新按钮');
+    assert.ok(LifeOS.Database.db, '当前连接保持可用（不主动关闭打断操作）');
+}
+
+async function testRestoreIntoEmptyIdbReloadsPageOnce() {
+    const backup = {
+        _meta: { version: 4, exportedAt: '2026-09-30T00:00:00.000Z', app: 'LifeOS' },
+        tasks: [{ id: 'task-1', title: '恢复任务', createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z', deletedAt: null }],
+        settings: []
+    };
+    let reloadCount = 0;
+    const store = new Map();
+    const windowStub = {
+        location: { protocol: 'http:', origin: 'http://localhost:3000', reload: () => { reloadCount++; } },
+        sessionStorage: {
+            getItem: (k) => (store.has(k) ? store.get(k) : null),
+            setItem: (k, v) => store.set(k, v)
+        }
+    };
+    const fetchImpl = () => Promise.resolve({ ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(backup))) });
+    const LifeOS = loadLifeOS(fetchImpl, { window: windowStub });
+    await LifeOS.Database.init();
+    // 等待 restore 的 fetch + 全 store getAll + import 链（mock 下需数十毫秒）
+    for (let waited = 0; waited < 2000 && reloadCount === 0; waited += 20) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    assert.strictEqual(reloadCount, 1, '空库恢复成功后必须刷新页面一次');
+    assert.strictEqual(store.get('lifeos-restored-reload'), '1', '必须写入 sessionStorage 防刷新循环');
+    const task = await LifeOS.Database.get('tasks', 'task-1');
+    assert.strictEqual(task.title, '恢复任务', '恢复的数据确实落库');
+}
+
 const tests = [
     testRecurringEventsDoNotAppearBeforeStartDate,
     testUpdatingRecurringEventToNonRecurringClearsRecurringFlag,
@@ -519,7 +709,14 @@ const tests = [
     testAIClientRetriesRetryableFailures,
     testAIClientRoutesViaConfiguredProxy,
     testAIClientCloudBaseProxyUsesBinaryContentType,
-    testAIClientRequiresConfiguration
+    testAIClientRequiresConfiguration,
+    testInitErrorClearsCachedPromiseAndAllowsRetry,
+    testInitBlockedShowsBannerAndRejectsWithBlockedCode,
+    testInitBlockedThenOldTabClosesResolvesAndClearsBanner,
+    testInitHangTimesOutWithTimeoutCode,
+    testInitVersionErrorGuidesHardRefresh,
+    testVersionChangeShowsRefreshBannerWithoutClosingConnection,
+    testRestoreIntoEmptyIdbReloadsPageOnce
 ];
 
 if (require.main === module) (async () => {

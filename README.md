@@ -5,7 +5,7 @@
 
 ## 🌐 线上地址（直接用）
 
-源码状态：**v7.0.0 发布候选，未发布**；最近有文档记录的正式发布为 v6.1.1。2026-09-14 只读核验发现线上已包含上下文页面、August 24 缓存（`lifeos-static-v20260824-1`）和 IndexedDB v4，说明存在早期 v7 改动，不能再把线上简单等同于 v6.1.1。当前候选使用 IndexedDB v5，修复上下文导出隐私、缓存归属及跨标签页失效，尚未部署。
+源码状态：**v6.2.0 发布候选，未发布**；最近有文档记录的正式发布为 v6.1.1。2026-09-14 只读核验发现线上已包含上下文页面、August 24 缓存（`lifeos-static-v20260824-1`）和 IndexedDB v4，说明存在早期候选改动，不能再把线上简单等同于 v6.1.1。当前候选使用 IndexedDB v5，包含上下文导出隐私、缓存归属及跨标签页失效修复、健康报告导入增强与数据库初始化容错，尚未部署。Personal Context（context.html）发布暂缓，v7.0.0 编号保留。
 
 恢复密钥与摘要缓存不进入新备份或本机后端快照；服务器过滤旧客户端的私密字段，拒绝直接静态读取数据库/备份文件。旧备份中已存在的敏感字段不会自动清理。测试可通过 `LIFEOS_DATA_DIR` 指定独立后端数据目录，日常运行无需设置。
 
@@ -175,7 +175,7 @@ node tests/habit-metrics.test.js   # 习惯度量/AI 解析/数据面板（5 项
 node tests/sleep-checkin.test.js     # 起床/睡觉打卡（3 项）
 node tests/ai-planner-parse.test.js  # AI 规划解析（8 项）
 node tests/nutrition.test.js         # AI 饮食/营养计算/隐私边界（9 项）
-node tests/health-report.test.js     # 健康报告解析/趋势/隐私边界（8 项）
+node tests/health-report.test.js     # 健康报告解析/导入/重试/隐私边界（14 项）
 node tests/context-client.test.js    # 跨语言 AES-GCM 固定向量
 node tests/context-security.test.js  # 上下文隐私/迁移/竞态（8 组）
 node tests/timeline-layout.test.js   # 时间轴布局（4 项）

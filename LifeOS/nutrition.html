@@ -371,16 +371,19 @@
                                 <span class="privacy-chip">🔒 原件不保存</span>
                             </div>
                             <div class="report-dropzone" :class="{dragging: reportDragging}" @dragenter.prevent="reportDragging = true" @dragover.prevent @dragleave.prevent="reportDragging = false" @drop.prevent="dropReportFiles">
-                                <input type="file" :accept="reportAccept" multiple @change="chooseReportFiles" aria-label="选择健康报告">
+                                <input type="file" :accept="reportAccept" :disabled="reportBusy" multiple @change="chooseReportFiles" aria-label="选择健康报告">
                                 <div>
                                     <div class="report-drop-icon">⇧</div>
                                     <div class="report-drop-title">拖入 PDF 或报告图片</div>
-                                    <div class="report-drop-hint">支持 1 份 PDF 或 1–5 张图片 · 单文件不超过 10MB<br>AI 解析后请确认再存入健康档案</div>
+                                    <div class="report-drop-hint">同一报告可混选 PDF 和图片，含 HEIC / TIFF<br>最多 20 个文件 · 合计 100 页<br>单文件 50MB · 总大小 150MB<br>不同日期请分别导入，AI 解析后核对保存</div>
                                     <span class="primary-btn report-select-visual">选择报告</span>
                                 </div>
                             </div>
                             <div class="report-type-row"><span class="report-type-chip">▣ 体检报告</span><span class="report-type-chip">⚗ 化验单</span><span class="report-type-chip">▤ 体重秤报告</span></div>
                             <div v-if="reportStatus" class="report-progress" :class="{error: reportError}">{{ reportStatus }}</div>
+                            <button v-if="reportRetry" class="primary-btn" type="button" :disabled="reportBusy" @click="processReportFiles(null)">重试未完成的分析</button>
+                            <button v-if="reportBusy" class="danger-btn" type="button" :disabled="reportStopping" @click="stopReportImport">{{ reportStopping ? '正在停止…' : '停止分析' }}</button>
+                            <p v-if="reportStopping" class="card-kicker">当前请求结束后停止，结果不会写入档案。</p>
                         </article>
 
                         <article class="nutrition-card health-summary-card">
@@ -802,6 +805,10 @@
                 const reportDragging = ref(false);
                 const reportStatus = ref('');
                 const reportError = ref(false);
+                const reportBusy = ref(false);
+                const reportRetry = ref(false);
+                const reportStopping = ref(false);
+                let preparedReport = null;
                 const reportAccept = HealthFiles.accept;
                 const showReportDraft = ref(false);
                 const selectedReport = ref(null);
@@ -880,12 +887,19 @@
 
                 async function processReportFiles(files) {
                     reportDragging.value = false;
+                    if (reportBusy.value || (files && !files.length)) return;
+                    reportBusy.value = true;
+                    reportStopping.value = false;
+                    reportRetry.value = false;
+                    showReportDraft.value = false;
+                    const importOptions = { shouldStop: () => reportStopping.value };
+                    if (files) preparedReport = null;
                     reportError.value = false;
                     reportStatus.value = '正在检查文件…';
                     try {
-                        const prepared = await HealthFiles.prepare(files, message => { reportStatus.value = message; });
+                        if (files) preparedReport = await HealthFiles.prepare(files, message => { if (!reportStopping.value) reportStatus.value = message; }, importOptions);
                         reportStatus.value = '文件已预处理，准备调用 AI…';
-                        const parsed = await HealthReports.analyzePrepared(prepared, message => { reportStatus.value = message; });
+                        const parsed = await HealthReports.analyzePrepared(preparedReport, message => { if (!reportStopping.value) reportStatus.value = message; }, importOptions);
                         reportDraft.value = {
                             ...parsed,
                             reportDate: parsed.reportDate || currentDate.value,
@@ -896,11 +910,23 @@
                             suggestions: parsed.suggestions || []
                         };
                         showReportDraft.value = true;
+                        preparedReport = null;
                         reportStatus.value = `解析完成：识别 ${reportDraft.value.metrics.length} 项指标，请核对后保存。`;
                     } catch (error) {
                         reportStatus.value = error.message || '报告解析失败';
-                        reportError.value = true;
+                        reportError.value = error.name !== 'AbortError';
+                        if (error.name === 'AbortError') preparedReport = null;
+                        if (error.retryable === false) preparedReport = null;
+                        reportRetry.value = !!preparedReport;
+                    } finally {
+                        reportBusy.value = false;
+                        reportStopping.value = false;
                     }
+                }
+
+                function stopReportImport() {
+                    reportStopping.value = true;
+                    reportStatus.value = '正在停止，等待当前读取或请求结束…';
                 }
 
                 function chooseReportFiles(event) {
@@ -1161,7 +1187,7 @@
                     chartDays, weeklyReport, reportRange, generatingReport, nutrientCards,
                     healthReports, latestHealthReport, healthCounts, attentionMetrics,
                     trendMetricOptions, trendMetricKey, trendPoints, reportDragging,
-                    reportStatus, reportError, reportAccept, showReportDraft, reportDraft,
+                    reportStatus, reportError, reportBusy, reportStopping, stopReportImport, reportRetry, processReportFiles, reportAccept, showReportDraft, reportDraft,
                     selectedReport, savingHealthReport,
                     shiftDate, loadDay, chooseMealImage, analyzeMeal, openFoodLibrary,
                     addLibraryFood, recalculateDraft, saveMeal, openExercise,

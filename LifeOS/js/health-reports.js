@@ -15,9 +15,64 @@
     var Database = LifeOS.Database;
     var AIClient = LifeOS.AIClient;
     var STORE = 'nutrition';
-    var MAX_FILE_BYTES = 10 * 1024 * 1024;
-    var MAX_PDF_PAGES = 20;
-    var MAX_IMAGE_FILES = 5;
+    var MAX_FILE_BYTES = 50 * 1024 * 1024;
+    var MAX_PDF_PAGES = 100;
+    var MAX_IMAGE_FILES = 20;
+    var MAX_TOTAL_BYTES = 150 * 1024 * 1024;
+    var MAX_PIXELS = 40000000;
+    var MAX_PREPARED_CHARS = 64 * 1024 * 1024;
+    var analysisCache = new WeakMap();
+
+    function checkStopped(options) {
+        if (options && options.shouldStop && options.shouldStop()) {
+            var error = new Error('已停止分析，原件未保存');
+            error.name = 'AbortError';
+            throw error;
+        }
+    }
+
+    function checkImageSize(width, height) {
+        if (!(width > 0 && height > 0) || width * height > MAX_PIXELS) {
+            throw new Error('图片像素过大或尺寸无效，请缩小至 4000 万像素以内');
+        }
+    }
+
+    // Crop tall screenshots before resizing so table text remains legible.
+    function imageTiles(source, width, height) {
+        checkImageSize(width, height);
+        var scale = Math.min(1, 1600 / width);
+        var tileHeight = Math.min(height, Math.floor(2000 / scale));
+        var step = Math.max(1, tileHeight - Math.min(100, Math.floor(tileHeight * 0.05)));
+        var output = [];
+        var totalChars = 0;
+        for (var y = 0; y < height; y += step) {
+            var h = Math.min(tileHeight, height - y);
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(width * scale));
+            canvas.height = Math.max(1, Math.round(h * scale));
+            var ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(source, 0, y, width, h, 0, 0, canvas.width, canvas.height);
+            var tile = canvas.toDataURL('image/jpeg', 0.86);
+            totalChars += tile.length;
+            if (totalChars > MAX_PREPARED_CHARS) throw new Error('图片解码结果过大，请分段导入');
+            output.push(tile);
+            canvas.width = canvas.height = 0;
+            if (y + h >= height) break;
+        }
+        return output;
+    }
+
+    async function decodeBrowserImage(blob) {
+        var url = URL.createObjectURL(blob);
+        try {
+            var img = new Image();
+            img.src = url;
+            await img.decode();
+            return imageTiles(img, img.naturalWidth, img.naturalHeight);
+        } finally { URL.revokeObjectURL(url); }
+    }
 
     function text(value, max) {
         return String(value === undefined || value === null ? '' : value).trim().slice(0, max || 240);
@@ -210,21 +265,18 @@
         }
     };
 
-    async function blobToDataUrl(blob) {
-        return new Promise(function (resolve, reject) {
-            var reader = new FileReader();
-            reader.onload = function () { resolve(reader.result); };
-            reader.onerror = function () { reject(reader.error || new Error('读取图片失败')); };
-            reader.readAsDataURL(blob);
-        });
-    }
-
-    async function decodeTiff(file) {
+    async function decodeTiff(file, options) {
         if (!window.UTIF) throw new Error('TIFF 解码器未加载，请刷新页面后重试');
         var buffer = await file.arrayBuffer();
         var ifds = window.UTIF.decode(buffer);
         var output = [];
-        for (var i = 0; i < Math.min(ifds.length, MAX_IMAGE_FILES); i++) {
+        var totalChars = 0;
+        if (!ifds.length || ifds.length > MAX_PDF_PAGES) throw new Error('TIFF 必须包含 1–100 页');
+        for (var i = 0; i < ifds.length; i++) {
+            checkStopped(options);
+            // UTIF only sets width/height during decodeImage; inspect TIFF tags
+            // before allocating the decoded pixel buffer.
+            checkImageSize(ifds[i].width || (ifds[i].t256 || [])[0], ifds[i].height || (ifds[i].t257 || [])[0]);
             window.UTIF.decodeImage(buffer, ifds[i]);
             var rgba = window.UTIF.toRGBA8(ifds[i]);
             var canvas = document.createElement('canvas');
@@ -234,21 +286,36 @@
             var imageData = ctx.createImageData(canvas.width, canvas.height);
             imageData.data.set(rgba);
             ctx.putImageData(imageData, 0, 0);
-            output.push(await LifeOS.Utils.compressImage(canvas.toDataURL('image/png'), 1600, 0.76));
+            var tiles = imageTiles(canvas, canvas.width, canvas.height);
+            totalChars += tiles.reduce(function (sum, tile) { return sum + tile.length; }, 0);
+            if (totalChars > MAX_PREPARED_CHARS) throw new Error('TIFF 解码结果过大，请分次导入');
+            output.push(tiles);
+            canvas.width = canvas.height = 0;
+            delete ifds[i].data;
         }
         return output;
     }
 
-    async function decodeImageFile(file) {
+    async function decodeImageFile(file, options) {
         var ext = (file.name.split('.').pop() || '').toLowerCase();
         if (ext === 'heic' || ext === 'heif' || /hei[cf]/i.test(file.type)) {
             if (!window.heic2any) throw new Error('HEIC 解码器未加载，请刷新页面后重试');
-            var converted = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.84 });
-            var blob = Array.isArray(converted) ? converted[0] : converted;
-            return [await LifeOS.Utils.compressImage(await blobToDataUrl(blob), 1600, 0.76)];
+            var converted = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.84, multiple: true });
+            var blobs = Array.isArray(converted) ? converted : [converted];
+            if (blobs.length > MAX_PDF_PAGES) throw new Error('HEIC 最多支持 100 页');
+            var images = [];
+            var totalChars = 0;
+            for (var blob of blobs) {
+                checkStopped(options);
+                var tiles = await decodeBrowserImage(blob);
+                totalChars += tiles.reduce(function (sum, tile) { return sum + tile.length; }, 0);
+                if (totalChars > MAX_PREPARED_CHARS) throw new Error('HEIC 解码结果过大，请分次导入');
+                images.push(tiles);
+            }
+            return images;
         }
-        if (ext === 'tif' || ext === 'tiff' || /tiff/i.test(file.type)) return decodeTiff(file);
-        return [await LifeOS.Utils.compressImage(await blobToDataUrl(file), 1600, 0.76)];
+        if (ext === 'tif' || ext === 'tiff' || /tiff/i.test(file.type)) return decodeTiff(file, options);
+        return [await decodeBrowserImage(file)];
     }
 
     async function renderPdfPage(page) {
@@ -263,76 +330,127 @@
     }
 
     var HealthReportFiles = {
-        accept: '.pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.tif,.tiff,image/*,application/pdf',
+        accept: '.pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.heic,.heif,.tif,.tiff,.avif,application/pdf,image/jpeg,image/png,image/webp,image/gif,image/bmp,image/heic,image/heif,image/tiff,image/avif',
 
         validate: function (files) {
             files = Array.from(files || []);
             if (!files.length) throw new Error('请选择 PDF 或报告图片');
-            if (files.some(function (file) { return file.size > MAX_FILE_BYTES; })) throw new Error('单个文件不能超过 10MB');
+            if (files.length > MAX_IMAGE_FILES) throw new Error('一次最多选择 20 个文件');
+            files.forEach(function (file) {
+                if (file.size > MAX_FILE_BYTES) throw new Error(file.name + '：单个文件不能超过 50MB');
+                if (file.size === 0) throw new Error(file.name + '：文件为空');
+                if (!/\.(pdf|jpe?g|png|webp|gif|bmp|heic|heif|tiff?|avif)$/i.test(file.name) &&
+                    !/^(application\/pdf|image\/(jpeg|png|webp|gif|bmp|heic|heif|tiff|avif))$/i.test(file.type || '')) {
+                    throw new Error(file.name + '：暂不支持此格式，请导出为 PDF 或图片后重试');
+                }
+            });
+            if (files.reduce(function (sum, file) { return sum + (file.size || 0); }, 0) > MAX_TOTAL_BYTES) throw new Error('所选文件合计不能超过 150MB');
             var pdfs = files.filter(function (file) { return file.type === 'application/pdf' || /\.pdf$/i.test(file.name); });
             if (pdfs.length) {
-                if (files.length !== 1) throw new Error('PDF 请单独上传，一次只解析一份报告');
-                return { kind: 'pdf', files: files };
+                return { kind: files.length === 1 ? 'pdf' : 'mixed', files: files };
             }
-            if (files.length > MAX_IMAGE_FILES) throw new Error('同一报告最多选择 5 张图片');
             return { kind: 'images', files: files };
         },
 
-        prepare: async function (files, onProgress) {
+        prepare: async function (files, onProgress, options) {
             var checked = this.validate(files);
             var progress = typeof onProgress === 'function' ? onProgress : function () {};
-            if (checked.kind === 'images') {
-                var images = [];
-                for (var i = 0; i < checked.files.length; i++) {
-                    progress('正在处理图片 ' + (i + 1) + '/' + checked.files.length + '…');
-                    images = images.concat(await decodeImageFile(checked.files[i]));
+            var prepared = { sourceType: checked.kind === 'images' ? 'images' : 'pdf', pageCount: 0, batches: [] };
+            var totalChars = 0;
+            function addBatch(batch, file) {
+                checkStopped(options);
+                batch.label = file.name + ' / 第 ' + batch.page + ' 页';
+                totalChars += (batch.text || '').length + (batch.images || []).reduce(function (sum, image) { return sum + image.length; }, 0);
+                if (totalChars > MAX_PREPARED_CHARS) throw new Error('预处理内容超过内存预算，请分次导入');
+                prepared.batches.push(batch);
+            }
+            for (var file of checked.files) {
+                checkStopped(options);
+                try {
+                    var remaining = MAX_PDF_PAGES - prepared.pageCount;
+                    if (remaining < 1) throw new Error('本次报告合计超过 100 页，请分次导入');
+                    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+                        prepared.pageCount += await preparePdf(file, prepared.pageCount, remaining, addBatch, progress, options);
+                    } else {
+                        progress(file.name + '：正在解码图片…');
+                        var pages = await decodeImageFile(file, options);
+                        if (!pages.length) throw new Error('未解码出任何图片');
+                        if (pages.length > remaining) throw new Error('本次报告合计超过 100 页，请分次导入');
+                        pages.forEach(function (tiles) {
+                            prepared.pageCount++;
+                            tiles.forEach(function (image) {
+                                addBatch({ kind: 'images', images: [image], page: prepared.pageCount }, file);
+                            });
+                        });
+                    }
+                } catch (error) {
+                    if (error.name === 'AbortError') throw error;
+                    throw new Error(file.name + '：' + (error.message || '文件读取失败'));
                 }
-                return {
-                    sourceType: 'images', pageCount: images.length,
-                    // One visual page per request keeps even detailed reports below
-                    // CloudBase's 6 MB binary request limit and improves extraction
-                    // accuracy for small tables.
-                    batches: chunk(images, 1).map(function (items, index) {
-                        return { kind: 'images', images: items, label: '图片批次 ' + (index + 1) };
-                    })
-                };
             }
-            if (!window.pdfjsLib) throw new Error('PDF 解析器未加载，请刷新页面后重试');
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
-            progress('正在读取 PDF…');
-            var pdf = await window.pdfjsLib.getDocument({ data: await checked.files[0].arrayBuffer() }).promise;
-            if (pdf.numPages > MAX_PDF_PAGES) throw new Error('PDF 最多支持 20 页，请拆分后再上传');
-            var textPages = [];
-            var imagePages = [];
-            for (var pageNo = 1; pageNo <= pdf.numPages; pageNo++) {
-                progress('正在预处理 PDF 第 ' + pageNo + '/' + pdf.numPages + ' 页…');
-                var page = await pdf.getPage(pageNo);
-                var content = await page.getTextContent();
-                var pageText = content.items.map(function (item) { return item.str; }).join(' ').replace(/\s+/g, ' ').trim();
-                if (pageText.length >= 80) textPages.push({ page: pageNo, text: '[第' + pageNo + '页] ' + pageText });
-                else imagePages.push({ page: pageNo, image: await renderPdfPage(page) });
-            }
-            var batches = chunk(textPages, 4).map(function (items, index) {
-                return { kind: 'text', text: items.map(function (v) { return v.text; }).join('\n'), label: 'PDF 文字批次 ' + (index + 1) };
-            });
-            batches = batches.concat(chunk(imagePages, 1).map(function (items, index) {
-                return { kind: 'images', images: items.map(function (v) { return v.image; }), label: 'PDF 扫描页批次 ' + (index + 1) };
-            }));
-            return { sourceType: 'pdf', pageCount: pdf.numPages, batches: batches };
+            checkStopped(options);
+            return prepared;
         }
     };
 
-    function chunk(items, size) {
-        var output = [];
-        for (var i = 0; i < items.length; i += size) output.push(items.slice(i, i + size));
-        return output;
+    async function preparePdf(file, offset, remaining, addBatch, progress, options) {
+        if (!window.pdfjsLib) throw new Error('PDF 解析器未加载，请刷新页面后重试');
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
+        progress(file.name + '：正在读取 PDF…');
+        var loading = window.pdfjsLib.getDocument({ data: await file.arrayBuffer() });
+        var pdf;
+        try {
+            pdf = await loading.promise;
+            if (pdf.numPages > remaining) throw new Error('本次报告合计超过 100 页，请分次导入');
+            for (var number = 1; number <= pdf.numPages; number++) {
+                checkStopped(options);
+                progress(file.name + '：正在处理第 ' + number + '/' + pdf.numPages + ' 页…');
+                var page = await pdf.getPage(number);
+                try {
+                    var content = await page.getTextContent();
+                    var pageText = content.items.map(function (item) { return item.str + (item.hasEOL ? '\n' : ' '); }).join('').trim();
+                    // An image-bearing PDF can contain only headers as text. Render such
+                    // pages too so scanned tables are not silently dropped.
+                    var hasImages = false;
+                    if (page.getOperatorList && window.pdfjsLib.OPS) {
+                        var operators = await page.getOperatorList();
+                        var ops = window.pdfjsLib.OPS;
+                        hasImages = operators.fnArray.some(function (op) {
+                            return [ops.paintImageXObject, ops.paintInlineImageXObject, ops.paintImageMaskXObject].includes(op);
+                        });
+                    }
+                    if (pageText.length >= 80) {
+                        var body = '[第' + (offset + number) + '页] ' + pageText;
+                        for (var start = 0; start < body.length; start += 12000) {
+                            addBatch({ kind: 'text', text: body.slice(start, start + 12000), page: offset + number }, file);
+                        }
+                    }
+                    if (pageText.length < 80 || hasImages) {
+                        addBatch({ kind: 'images', images: [await renderPdfPage(page)], page: offset + number }, file);
+                    }
+                } finally { if (page.cleanup) page.cleanup(); }
+            }
+            return pdf.numPages;
+        } catch (error) {
+            if (error.name === 'PasswordException') throw new Error('PDF 已加密，请先解锁再导入');
+            throw error;
+        } finally {
+            if (pdf) await pdf.destroy();
+            else if (loading.destroy) await loading.destroy();
+        }
     }
 
     var HealthReports = {
-        analyzePrepared: async function (prepared, onProgress) {
-            var results = [];
+        analyzePrepared: async function (prepared, onProgress, options) {
+            if (!prepared || !prepared.batches || !prepared.batches.length) throw new Error('文件中没有可分析的内容');
+            checkStopped(options);
+            var results = analysisCache.get(prepared) || [];
+            analysisCache.set(prepared, results);
             for (var i = 0; i < prepared.batches.length; i++) {
-                if (onProgress) onProgress('AI 正在解析第 ' + (i + 1) + '/' + prepared.batches.length + ' 批…');
+                checkStopped(options);
+                if (onProgress) onProgress('AI 正在解析第 ' + (i + 1) + '/' + prepared.batches.length + ' 批：' + (prepared.batches[i].label || '') + '…');
+                if (results[i]) continue;
+                try {
                 var response = await AIClient.chat({
                     messages: HealthReportEngine.messages(prepared.batches[i]),
                     responseFormat: { type: 'json_object' },
@@ -340,11 +458,30 @@
                     maxTokens: 3500,
                     timeoutMs: 120000
                 });
-                results.push(HealthReportEngine.parseAnalysis(AIClient.extractText(response)));
+                checkStopped(options);
+                var choice = response && response.choices && response.choices[0];
+                if (choice && choice.finish_reason === 'length') throw new Error('AI 输出超长被截断，请重新导入更少内容');
+                var parsed = HealthReportEngine.parseAnalysis(AIClient.extractText(response));
+                if (prepared.batches[i].page) parsed.metrics.forEach(function (metric) { metric.page = prepared.batches[i].page; });
+                results[i] = parsed;
+                } catch (error) {
+                    if (error.name === 'AbortError') throw error;
+                    throw new Error((prepared.batches[i].label || '批次 ' + (i + 1)) + '解析失败：' + error.message + '。可重试，已完成批次不会重复调用。');
+                }
             }
             var merged = HealthReportEngine.mergeAnalyses(results);
             merged.sourceType = prepared.sourceType;
             merged.pageCount = prepared.pageCount;
+            if (!merged.metrics.length) {
+                analysisCache.delete(prepared);
+                throw new Error('未识别到指标，请检查报告是否清晰，或确认所选 AI 模型支持图片识别');
+            }
+            var dates = Array.from(new Set(results.map(function (result) { return result.reportDate; }).filter(Boolean)));
+            if (dates.length > 1) {
+                var error = new Error('识别到多个报告日期（' + dates.join('、') + '），请按报告分别导入，以免混淆指标趋势');
+                error.retryable = false;
+                throw error;
+            }
             return merged;
         },
 

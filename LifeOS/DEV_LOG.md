@@ -1,6 +1,34 @@
 # Life OS — 开发日志（Dev Log）
 
-## v7.0.0 — 本地发布准备（2026-09-14，未发布）
+## 范围决定：Personal Context 暂缓，发版改为 v6.2.0（2026-10-01）
+
+- 用户在了解 Personal Context 投影机制的定位后决定**本次暂缓**（不是废弃，v7.0.0 编号保留给它的正式发布）：投影集合、签名写入云函数（`context-projection`）、`CONTEXT_OWNER_UID`/`CONTEXT_HMAC_KEYS` 配置、recovery code、双设备投影复测本次全部不做。核验原计划时发现云端本就什么都没搭（两个集合、函数均不存在），暂缓后无需回滚任何函数配置。
+- 当日曾按核验前置为搭建做过一次临时准备（创建 `context_projections` / `context_projection_nonces` 空集合并应用安全规则），随暂缓决定一并删除回收。
+- 代码层处置：`context.html` / `js/context-client.js` 保留休眠随包发布（无导航入口；线上 8/24 残留的 context.html 在集合缺失时走错误态）；`contextProjection*` 不进导出/快照的隐私边界保留；`context-security.test.js` 继续作为数据层回归运行。
+- **发版编号由 v7.0.0（MAJOR）改为 v6.2.0（MINOR）**：本次发布内容全部属于既有板块的功能追加与修复，Personal Context 不在发布范围。`js/sync.js` 心跳上报 APP_VERSION 同步改为 6.2.0。
+
+## v6.2.0 — 数据库初始化容错（推版"丢数据"根因修复，本地验证，未部署）
+
+- 现场复盘：用户报告"每次推版到 CloudBase 后 PWA 全空"。审查代码确认部署不会删除任何数据，真正的机制是——部署触发 IndexedDB 版本升级/SW 更新时：① 新标签页 open 被旧标签页连接阻塞（`onblocked` 无处理）→ init 无限挂起页面空白；② SW 缓存滞后让旧代码对已升级的库 open 抛 VersionError → init 静默 reject 页面空白；③ `_initPromise` 缓存 rejected promise，失败后所有 CRUD 永久失败且无 UI 提示。云端核验：同步集合完好，但手机设备最后心跳停在 2026-08-19；云端全量 81 条业务记录已导出为 `data/lifeos-backup-cloud-2026-09-30.json` 保底。
+- `Database.init()` 加固：open 挂 `onblocked`（立即弹等待横幅，旧连接关闭后自动继续）+ `onerror`（VersionError 单独识别为"本地数据库版本冲突"并引导强刷）+ 20s 超时兜底（见过 blocked 则报 DB_BLOCKED，否则 DB_TIMEOUT）；失败路径清空 `_initPromise` 允许真正重试；迟到成功忽略让位给重试。
+- 新增 `_showDbBanner()`：init 失败/升级等待/versionchange 时注入 fixed 顶部横幅（标题+说明+重试+刷新按钮），文案明确"数据保存在本地，并未丢失"；`typeof document` 守卫保证 Node 测试环境安全。`onsuccess` 挂 `onversionchange`：其他标签页升级时提示刷新、不主动 close 打断当前操作。
+- 修 DEV_LOG 458 已知竞态：`BackendSync.restore()` 在空库 overwrite 恢复成功后自动 `location.reload()`（sessionStorage 防循环）；merge 路径不刷新。
+- `pwa.js`：`controllerchange`（新 SW 接管，排除首次安装）弹"新版本已就绪"刷新横幅，不自动重载避免打断输入；注册后申请 `navigator.storage.persist()` 降低浏览器清理 IndexedDB 的风险。
+- `css/style.css` 新增 `.db-init-banner` 样式块（fixed 顶部、`--color-urgent` 变量、移动端纵排）。
+- 测试：`tests/core-data.test.js` 的 FakeIndexedDB 增加失败注入（failOpen/hangOpen/blockOpen/blockThenSuccess/versionError），loadLifeOS 的 document 桩升级；新增 7 用例（onerror 可重试、blocked 超时报错、blocked 恢复成功撤横幅、挂起超时、VersionError 引导强刷、versionchange 横幅且不关连接、空库恢复刷新一次），core-data 12→19 项。全部 14 套件通过。
+- SW 升至 `lifeos-static-v20260930-1`；数据 schema 未变，IndexedDB 保持 v5。本机后端快照另确认 `lifeos-db.json`（8/24，含 PC 独有 120 角色）与云端互有先后，待手机端恢复后由用户决定合并口径。
+
+## v6.2.0 — 健康报告导入修复（本地验证，未部署）
+
+- v7 基线提交 6ca332b 已由用户确认推送到 GitHub。此次报告改动尚未提交或部署。
+- 同一报告可混选 PDF 和图片：20 文件、100 页、50MB/文件、150MB 合计；未支持的格式明确说明导出 PDF，不再一律按图片解码。
+- 拆分文件预处理与 PDF 页面处理；长截图按宽度缩放并重叠分片，保留细小表格文字。TIFF 先读尺寸标签再分配像素，HEIC 请求 multiple 转换，全部页保留；设像素和预处理内存预算。
+- PDF 长文字分批不截尾；包含图片的页面同时渲染，避免只有页眉文本而漏掉扫描表格；及时销毁 PDF 资源。
+- AI 成功批次只在内存缓存，失败可续跑；无指标结果可重新尝试；输出截断、多报告日期明确报错。导入中锁定重复操作，停止后等待当前步骤完成并丢弃结果。
+- 14 套自动化测试通过（健康报告 14 项）。隔离 Chrome 验证 1440/390 宽度、长截图、重试、停止、混合 PDF/TIFF、七页 TIFF、确认保存与原件不落库；无页面/控制台错误。真实 HEIC 文件和真实上游 AI 未验证。
+- SW 升至 lifeos-static-v20260914-3；数据 schema 未变，IndexedDB 保持 v5。
+
+## v6.2.0 — 本地发布准备（2026-09-14，未发布）
 
 - 继续复核：本机服务器统一过滤旧客户端/旧备份中的上下文字段，新增备份同样过滤，静态 data 目录只公开参考数据；新增 backend-privacy 专项，共 14 测试套件通过。
 - 上下文身份/缓存写入改为事务 complete 后返回成功；原生浏览器注入 abort 确认拒绝且无误广播。显式账号验证失败清除缓存，避免稍后离线显示旧摘要。
@@ -16,7 +44,7 @@
 
 ---
 
-## v7.0.0 — 移动端 UI 修复补丁（2026-08-24）
+## v6.2.0 — 移动端 UI 修复补丁（2026-08-24，内容已随早期部署上线）
 
 - 时间轴新增可测试的 `js/timeline-layout.js`：只在真实相交的事件组中分栏；相接事件恢复全宽。移动端短事件按实际分钟高度绘制并采用紧凑内容，避免最小 24px 卡片压住下一事件。
 - 健康“报告档案”在手机端改为标题说明整行、`+ 导入报告` 独立居中的单行操作区；桌面端保持同排。
@@ -26,7 +54,7 @@
 
 ---
 
-## v7.0.0 — Personal Context 只读窗口（源码完成，未发布，2026-08-17）
+## v7.0.0 — Personal Context 只读窗口（源码完成，暂缓发布，2026-08-17）
 
 - 新增 `context.html` 与 `js/context-client.js`，作为独立 Personal Context Infrastructure 的跨设备摘要窗口；完整检索、授权审批与运维仍留在 `127.0.0.1:8765` 本机控制台。
 - 只读取 CloudBase 独立 `context_projections` 集合，并在浏览器端使用 AES-256-GCM 解密；recovery code 仅保存在当前设备 IndexedDB `settings`，不参加 LifeOS 同步。
@@ -37,7 +65,7 @@
 ---
 
 > **日期**: 2026-07-08  
-> **当前源码版本**: v7.0.0（未发布；线上仍为 v6.1.1）
+> **当前源码版本**: v6.2.0（未发布；线上仍为 v6.1.1，Personal Context 暂缓、v7.0.0 编号保留）
 > **最后更新**: 【2026-08-01】
 > **项目路径**: `D:\FUN_VibeCoding\LifeOS\LifeOS\`  
 > **PRD**: `D:\FUN_VibeCoding\LifeOS\PRD_LifeOS.md`

@@ -217,6 +217,7 @@
             this.db = null;
             this._initPromise = null;
             this._deviceIdPromise = null;
+            this._openTimeoutMs = 20000; // open 超时兜底：blocked/挂起时不再无限等待（测试可覆盖）
         }
 
         /**
@@ -256,19 +257,65 @@
          */
         init() {
             if (this._initPromise) return this._initPromise;
-            
+
+            const openTimeoutMs = this._openTimeoutMs || 20000;
             this._initPromise = new Promise((resolve, reject) => {
+                let settled = false;
+                const fail = (error) => {
+                    if (settled) return;
+                    settled = true;
+                    // 失败不缓存 rejected promise：清空后允许用户点重试真正重新 open
+                    this._initPromise = null;
+                    this._showDbBanner(error.title || '本地数据库不可用', error.detail || '数据保存在本地，并未丢失。请稍后重试。');
+                    reject(error);
+                };
+
                 const request = indexedDB.open(this.dbName, this.version);
+                const timer = setTimeout(() => {
+                    if (settled) return;
+                    if (request._blockedSeen) {
+                        fail(this._dbOpenError('DB_BLOCKED', '本地数据库升级被阻塞', '另一个 LifeOS 标签页/窗口正在使用旧版本，请关闭它们后重试。数据保存在本地，并未丢失。'));
+                    } else {
+                        fail(this._dbOpenError('DB_TIMEOUT', '本地数据库打开超时', '超过 ' + Math.round(openTimeoutMs / 1000) + ' 秒未完成打开。数据保存在本地，并未丢失。'));
+                    }
+                }, openTimeoutMs);
+                if (timer && typeof timer.unref === 'function') timer.unref();
 
                 request.onerror = () => {
-                    console.error('[LifeOS] IndexedDB 打开失败:', request.error);
-                    reject(request.error);
+                    clearTimeout(timer);
+                    if (settled) return;
+                    const raw = request.error;
+                    console.error('[LifeOS] IndexedDB 打开失败:', raw);
+                    if (raw && raw.name === 'VersionError') {
+                        // 旧代码对新库：浏览器拒绝以更低版本打开（推版 + SW 缓存滞后的典型现场）
+                        fail(this._dbOpenError('DB_VERSION', '本地数据库版本冲突', '当前页面代码比本地数据旧（多为旧缓存所致），请强制刷新本页（Ctrl+Shift+R）或关闭全部标签页后重开。数据保存在本地，并未丢失。', raw));
+                        return;
+                    }
+                    fail(this._dbOpenError('DB_OPEN_FAILED', '本地数据库打开失败', (raw && raw.message) || '浏览器未能打开 IndexedDB。数据保存在本地，并未丢失。', raw));
+                };
+
+                request.onblocked = () => {
+                    // 升级被旧版本连接阻塞：不立即失败（旧连接关闭后仍可能 success），先提示，超时兜底
+                    request._blockedSeen = true;
+                    console.warn('[LifeOS] IndexedDB 升级被其他标签页阻塞，等待其关闭…');
+                    this._showDbBanner('正在等待其他标签页关闭', '另一个 LifeOS 标签页正在使用旧版本。关闭它后本页会自动继续打开；数据保存在本地，并未丢失。');
                 };
 
                 request.onsuccess = () => {
-                    this.db = request.result;
+                    clearTimeout(timer);
+                    if (settled) return; // 超时/失败后的迟到成功：忽略，让位给重试的 open
+                    const db = request.result;
+                    // 其他标签页升级数据库时优雅让路：提示刷新，不打断当前操作
+                    if (typeof db.addEventListener === 'function') {
+                        db.addEventListener('versionchange', () => this._handleVersionChange());
+                    } else {
+                        db.onversionchange = () => this._handleVersionChange();
+                    }
+                    this.db = db;
+                    this._hideDbBanner();
                     console.log('[LifeOS] IndexedDB 初始化成功，版本:', this.version);
-                    resolve(this.db);
+                    settled = true;
+                    resolve(db);
                     if (typeof BackendSync !== 'undefined') {
                         BackendSync.restore().then(function(restored) {
                             if (restored) console.log('[LifeOS] Data restored from backend');
@@ -285,6 +332,83 @@
             });
 
             return this._initPromise;
+        }
+
+        _dbOpenError(code, title, detail, cause) {
+            const error = new Error(title + '：' + detail);
+            error.name = code === 'DB_BLOCKED' ? 'BlockedError'
+                : (code === 'DB_TIMEOUT' ? 'TimeoutError' : 'DatabaseOpenError');
+            error.code = code;
+            error.title = title;
+            error.detail = detail;
+            if (cause) error.cause = cause;
+            return error;
+        }
+
+        _handleVersionChange() {
+            console.log('[LifeOS] 数据库已被其他标签页升级，引导刷新本页');
+            this._showDbBanner('应用已更新', '另一个标签页已完成数据库升级。刷新本页即可继续，当前页面里的数据不会丢失。');
+        }
+
+        /**
+         * 数据库初始化失败/升级等待时的全局提示横幅。
+         * 目的：init 失败时页面绝不能"静默空白"——必须让用户知道数据还在本地。
+         */
+        _showDbBanner(title, message) {
+            if (typeof document === 'undefined' || !document.body || typeof document.createElement !== 'function') {
+                console.warn('[LifeOS] DB 横幅:', title, '-', message);
+                return;
+            }
+            let banner = null;
+            try { banner = document.getElementById('lifeos-db-banner'); } catch (e) { banner = null; }
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'lifeos-db-banner';
+                banner.className = 'db-init-banner';
+                if (typeof document.body.appendChild === 'function') document.body.appendChild(banner);
+            }
+            banner.textContent = '';
+            const text = document.createElement('div');
+            text.className = 'db-init-banner-text';
+            const titleEl = document.createElement('strong');
+            titleEl.textContent = title;
+            const msgEl = document.createElement('span');
+            msgEl.textContent = message;
+            text.appendChild(titleEl);
+            text.appendChild(msgEl);
+            banner.appendChild(text);
+            const actions = document.createElement('div');
+            actions.className = 'db-init-banner-actions';
+            const retryBtn = document.createElement('button');
+            retryBtn.type = 'button';
+            retryBtn.className = 'db-init-banner-btn';
+            retryBtn.textContent = '重试';
+            retryBtn.addEventListener('click', () => {
+                this._hideDbBanner();
+                this.init().catch(() => { /* 失败时 init 会再次弹横幅 */ });
+            });
+            const reloadBtn = document.createElement('button');
+            reloadBtn.type = 'button';
+            reloadBtn.className = 'db-init-banner-btn db-init-banner-btn-primary';
+            reloadBtn.textContent = '刷新页面';
+            reloadBtn.addEventListener('click', () => {
+                try {
+                    if (typeof window !== 'undefined' && window.location && typeof window.location.reload === 'function') {
+                        window.location.reload();
+                    }
+                } catch (e) { /* 测试环境无 location */ }
+            });
+            actions.appendChild(retryBtn);
+            actions.appendChild(reloadBtn);
+            banner.appendChild(actions);
+        }
+
+        _hideDbBanner() {
+            try {
+                if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+                const banner = document.getElementById('lifeos-db-banner');
+                if (banner && typeof banner.remove === 'function') banner.remove();
+            } catch (e) { /* 静默 */ }
         }
 
         _createStores(db, oldVersion = 0, transaction = null) {
@@ -2244,6 +2368,7 @@
                     console.log('[LifeOS] BackendSync: restoring from backend...');
                     await db.importAll(data, 'overwrite');
                     console.log('[LifeOS] BackendSync: restored successfully');
+                    this._reloadAfterEmptyRestore();
                     return true;
                 } else {
                     await db.importAll(data, 'merge');
@@ -2253,6 +2378,23 @@
                 console.warn('[LifeOS] BackendSync restore failed:', e.message);
                 return false;
             }
+        },
+
+        /**
+         * 空库从后端恢复成功后刷新页面（DEV_LOG 已知竞态：页面可能先渲染空
+         * IndexedDB，恢复完成后无人通知 UI 重读）。仅 overwrite 路径触发；
+         * sessionStorage 防止异常情况下的刷新循环。
+         */
+        _reloadAfterEmptyRestore() {
+            try {
+                if (typeof window === 'undefined' || !window.location || typeof window.location.reload !== 'function') return;
+                if (window.sessionStorage) {
+                    if (window.sessionStorage.getItem('lifeos-restored-reload')) return;
+                    window.sessionStorage.setItem('lifeos-restored-reload', '1');
+                }
+                console.log('[LifeOS] BackendSync: 本地库为空已从后端恢复，刷新页面以加载数据');
+                window.location.reload();
+            } catch (e) { /* 静默 */ }
         },
 
         async sync() {

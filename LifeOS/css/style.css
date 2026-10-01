@@ -2676,3 +2676,69 @@ body::before {
         display: none;
     }
 }
+
+/* ============================================================
+   数据库初始化提示横幅（init 失败/升级等待时由 core.js 注入）
+   ============================================================ */
+.db-init-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2000; /* 高于 modal(1000)：数据库故障必须最优先可见 */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 16px;
+    background: var(--bg-card, #fff);
+    border-bottom: 2px solid var(--color-urgent);
+    box-shadow: var(--shadow-lg);
+}
+
+.db-init-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.db-init-banner-text strong {
+    color: var(--color-urgent);
+}
+
+.db-init-banner-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.db-init-banner-btn {
+    padding: 6px 14px;
+    border: 1px solid var(--color-urgent);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-urgent);
+    font: inherit;
+    cursor: pointer;
+}
+
+.db-init-banner-btn-primary {
+    background: var(--color-urgent);
+    color: var(--text-inverse);
+}
+
+@media (max-width: 768px) {
+    .db-init-banner {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+    }
+
+    .db-init-banner-actions {
+        justify-content: center;
+    }
+}
